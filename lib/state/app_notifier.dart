@@ -169,16 +169,24 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   }
 
   Future<void> _syncOverlay(AppState state) async {
-    final active = state.isFilterActive(DateTime.now());
-    final showNotification = state.notificationShortcutEnabled;
+    var currentState = state;
+    final nativeEnabled = await _overlayService.isOverlayEnabled();
+    if (nativeEnabled == false && currentState.overlayEnabled) {
+      final updatedState = currentState.copyWith(overlayEnabled: false);
+      this.state = AsyncData(updatedState);
+      await _persist(updatedState);
+      currentState = updatedState;
+    }
+
+    final active = currentState.isFilterActive(DateTime.now());
+    final showNotification = currentState.notificationShortcutEnabled;
     if (active) {
       await _overlayService.startOverlay(
-        preset: state.activePreset,
+        preset: currentState.activePreset,
         showNotification: showNotification,
       );
     } else {
       await _overlayService.stopOverlay(showNotification: showNotification);
     }
   }
-
 }

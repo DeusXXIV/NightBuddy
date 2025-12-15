@@ -27,6 +27,8 @@ class OverlayService : Service() {
     companion object {
         const val CHANNEL_ID = "nightbuddy_overlay_channel"
         const val NOTIF_ID = 1001
+        @Volatile
+        var lastKnownEnabled: Boolean? = null
 
         const val ACTION_START = "com.example.nightbuddy.ACTION_START"
         const val ACTION_ENABLE = "com.example.nightbuddy.ACTION_ENABLE"
@@ -74,6 +76,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         overlayController.hide()
+        lastKnownEnabled = false
         NotificationManagerCompat.from(this).cancel(NOTIF_ID)
     }
 
@@ -102,6 +105,7 @@ class OverlayService : Service() {
             return
         }
         isFilterEnabled = true
+        lastKnownEnabled = true
         overlayController.show(payload)
         updateNotification()
     }
@@ -109,6 +113,7 @@ class OverlayService : Service() {
     private fun disableOverlay() {
         if (!isFilterEnabled) return
         isFilterEnabled = false
+        lastKnownEnabled = false
         overlayController.hide()
         updateNotification()
     }

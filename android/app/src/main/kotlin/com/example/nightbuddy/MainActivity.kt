@@ -45,6 +45,9 @@ class MainActivity : FlutterActivity() {
                         val ok = OverlayServiceStarter.requestPermission(this)
                         result.success(ok)
                     }
+                    "getOverlayStatus" -> {
+                        result.success(OverlayService.lastKnownEnabled)
+                    }
                     else -> result.notImplemented()
                 }
             }

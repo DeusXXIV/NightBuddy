@@ -20,6 +20,16 @@ class OverlayService {
     // Placeholder for permission checks or warm-up work.
   }
 
+  Future<bool?> isOverlayEnabled() async {
+    if (!_supportsNative) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('getOverlayStatus');
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> hasPermission() async {
     if (!_supportsNative) return true;
     final result = await _channel.invokeMethod<bool>('hasPermission');
