@@ -56,10 +56,6 @@ class AppState {
     return overlayEnabled;
   }
 
-  bool _isWithinSchedule(DateTime now) {
-    return true;
-  }
-
   Map<String, dynamic> toJson() {
     return {
       'presets': presets.map((p) => p.toJson()).toList(),
