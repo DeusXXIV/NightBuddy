@@ -47,3 +47,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Required for split-compat/deferred components classes referenced by Flutter embedding.
+    implementation("com.google.android.play:core:1.10.3")
+}

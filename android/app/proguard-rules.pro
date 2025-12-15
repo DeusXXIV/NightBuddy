@@ -14,6 +14,10 @@
     <methods>;
 }
 
+# Keep Play Core classes used by Flutter deferred components / split compat
+-dontwarn com.google.android.play.**
+-keep class com.google.android.play.** { *; }
+
 # Remove Log calls in release
 -assumenosideeffects class android.util.Log {
     public static *** v(...);
