@@ -30,10 +30,16 @@ class OverlayService : Service() {
         @Volatile
         var lastKnownEnabled: Boolean? = null
 
-        const val ACTION_START = "com.example.nightbuddy.ACTION_START"
-        const val ACTION_ENABLE = "com.example.nightbuddy.ACTION_ENABLE"
-        const val ACTION_DISABLE = "com.example.nightbuddy.ACTION_DISABLE"
-        const val ACTION_UPDATE = "com.example.nightbuddy.ACTION_UPDATE"
+        private val actionPrefix: String
+            get() = "${BuildConfig.APPLICATION_ID}."
+        val ACTION_START: String
+            get() = "${actionPrefix}ACTION_START"
+        val ACTION_ENABLE: String
+            get() = "${actionPrefix}ACTION_ENABLE"
+        val ACTION_DISABLE: String
+            get() = "${actionPrefix}ACTION_DISABLE"
+        val ACTION_UPDATE: String
+            get() = "${actionPrefix}ACTION_UPDATE"
 
         const val EXTRA_TEMPERATURE = "temperature"
         const val EXTRA_OPACITY = "opacity"

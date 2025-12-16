@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
+import '../../constants/app_links.dart';
 import '../../state/app_notifier.dart';
 import '../../services/overlay_service.dart';
 
@@ -46,20 +47,21 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Rate this app'),
               onTap: () {
                 _launchUrl(
-                  'market://details?id=com.example.nightbuddy',
+                  'market://details?id=$kAndroidPackageId',
                   context,
                   fallback:
-                      'https://play.google.com/store/apps/details?id=com.example.nightbuddy',
+                      'https://play.google.com/store/apps/details?id=$kAndroidPackageId',
                 );
               },
             ),
             ListTile(
               leading: const Icon(Icons.privacy_tip_outlined),
               title: const Text('Privacy Policy'),
-              onTap: () => _showLegal(
+              onTap: () => _handleLegalTap(
                 context,
-                title: 'Privacy Policy',
-                body:
+                url: kPrivacyPolicyUrl,
+                fallbackTitle: 'Privacy Policy',
+                fallbackBody:
                     'NightBuddy stores your preferences (presets, schedule, premium flag) locally on your device only. No personal data is sent to our servers. '
                     'Ads and in-app purchases may collect diagnostics per their respective SDK policies. You can clear app data to reset stored preferences.',
               ),
@@ -67,10 +69,11 @@ class SettingsScreen extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.article_outlined),
               title: const Text('Terms of Service'),
-              onTap: () => _showLegal(
+              onTap: () => _handleLegalTap(
                 context,
-                title: 'Terms of Service',
-                body:
+                url: kTermsOfServiceUrl,
+                fallbackTitle: 'Terms of Service',
+                fallbackBody:
                     'Use NightBuddy at your own discretion. The app provides a screen tint overlay to reduce blue light. We do not guarantee medical outcomes. '
                     'By using the app, you agree not to misuse overlays (e.g., to obscure critical system dialogs) and to comply with Play Store policies. '
                     'Premium unlock is non-transferable and subject to Play Store billing terms.',
@@ -95,6 +98,19 @@ class SettingsScreen extends ConsumerWidget {
       error: (error, _) => Scaffold(body: Center(child: Text('Error: $error'))),
     );
   }
+}
+
+Future<void> _handleLegalTap(
+  BuildContext context, {
+  required String url,
+  required String fallbackTitle,
+  required String fallbackBody,
+}) async {
+  if (url.isNotEmpty) {
+    await _launchUrl(url, context);
+    return;
+  }
+  _showLegal(context, title: fallbackTitle, body: fallbackBody);
 }
 
 Future<void> _launchUrl(String url, BuildContext context,
