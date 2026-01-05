@@ -27,9 +27,13 @@ NightBuddy is a blue light filter with overlay control, scheduling, and monetiza
 - Wind-down checklist editor in Settings.
 - Sunset sync toggle (location-based) for wind-down planning.
 - Screen-off goal notifications (start/end).
+- Notification schedule card with preview actions.
 - Soundscapes with a sleep timer.
 - Sleep journal CSV export.
 - Pause until the next scheduled change.
+- Overlay watchdog sync banner when native overlay mismatches app state.
+- Multiple custom presets with create/rename/delete.
+- High-contrast mode toggle.
 
 ## Recent Improvements
 - Persisted screen-off goal state and added default duration settings.
@@ -39,6 +43,11 @@ NightBuddy is a blue light filter with overlay control, scheduling, and monetiza
 - Added location-based sunset sync, screen-off notifications, and soundscapes.
 - Added CSV export for sleep journal logs.
 - Added bedtime mode auto-off timer and reorderable checklist.
+- Added notification previews and upcoming reminder visibility.
+- Added overlay watchdog sync and guidance banner.
+- Added multi custom presets and management UI.
+- Added high-contrast accessibility toggle.
+- Added weekly summary expansion with more insights and sharing details.
 
 ## Overlay Control Model
 - Single source of truth: `filterEnabled`.
