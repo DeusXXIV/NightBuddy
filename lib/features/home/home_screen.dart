@@ -2752,9 +2752,8 @@ class _ScreenOffGoalCard extends ConsumerWidget {
         final windowStart = scheduleStart == null || scheduleEnd == null
             ? null
             : _currentOrNextStart(now, scheduleStart, scheduleEnd);
-        final goalStart = windowStart == null
-            ? null
-            : windowStart.subtract(Duration(minutes: primaryMinutes));
+        final goalStart =
+            windowStart?.subtract(Duration(minutes: primaryMinutes));
         final shouldStart = goalStart != null &&
             now.isAfter(goalStart) &&
             end == null &&
@@ -2845,13 +2844,6 @@ class _ScreenOffGoalCard extends ConsumerWidget {
     return '${hours}h ${minutes}m';
   }
 
-  String _formatTime(DateTime time) {
-    final local = time.toLocal();
-    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
-    final minute = local.minute.toString().padLeft(2, '0');
-    final period = local.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $period';
-  }
 }
 
 class _SoundscapeOption {
