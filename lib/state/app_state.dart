@@ -352,7 +352,7 @@ class AppState {
     final scheduleJson = json['schedule'];
     final schedule = scheduleJson is Map
         ? ScheduleConfig.fromJson(
-            Map<String, dynamic>.from(scheduleJson as Map),
+            Map<String, dynamic>.from(scheduleJson),
           )
         : AppState.initial().schedule;
     return AppState(

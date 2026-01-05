@@ -22,7 +22,9 @@ class SunsetService {
     Position position;
     try {
       position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+        ),
       );
     } catch (_) {
       return null;

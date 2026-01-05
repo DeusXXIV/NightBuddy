@@ -39,7 +39,7 @@ class PresetChip extends StatelessWidget {
       onSelected: (_) => onSelected(),
       avatar: selected ? const Icon(Icons.check, size: 16) : null,
       showCheckmark: false,
-      disabledColor: Theme.of(context).colorScheme.surfaceVariant,
+      disabledColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       backgroundColor: Colors.white.withAlpha((0.04 * 255).round()),
     );
   }

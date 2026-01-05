@@ -209,9 +209,10 @@ class _HomeView extends ConsumerWidget {
                 }
 
                 final ok = await notifier.toggleOverlay(value);
-                if (!ok && context.mounted) {
+                if (!ok) {
                   final hasPermission =
                       await ref.read(overlayServiceProvider).hasPermission();
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
@@ -1485,7 +1486,7 @@ class _SleepJournalCard extends ConsumerWidget {
                     .bodySmall
                     ?.copyWith(color: _mutedColor(context)),
               ),
-            if (bedtimeConsistency == null && bedtimeMinutes.length >= 1)
+            if (bedtimeConsistency == null && bedtimeMinutes.isNotEmpty)
               Text(
                 'Consistency needs 3+ logs',
                 style: Theme.of(context)
@@ -2087,7 +2088,8 @@ class _OverlayDebugCard extends ConsumerWidget {
             ],
           ),
           loading: () => const Text('Debug: Checking overlay status...'),
-          error: (_, __) => const Text('Debug: Overlay status unavailable'),
+          error: (_, stackTrace) =>
+              const Text('Debug: Overlay status unavailable'),
         ),
       ),
     );
@@ -2407,7 +2409,7 @@ class _ScheduleTimelineCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final nextStart = _nextStart(now, start);
+    final nextStart = _nextStartTime(now, start);
     final nextEnd = _nextEnd(now, start, end);
     final windDownMinutes = schedule.windDownMinutes;
     final fadeOutMinutes = schedule.fadeOutMinutes;
@@ -2455,7 +2457,7 @@ class _ScheduleTimelineCard extends StatelessWidget {
                     child: Container(
                       height: 8,
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.6),
+                        color: Colors.amber.withValues(alpha: 0.6),
                         borderRadius: const BorderRadius.horizontal(
                           left: Radius.circular(6),
                         ),
@@ -2527,15 +2529,8 @@ class _ScheduleTimelineCard extends StatelessWidget {
     );
   }
 
-  DateTime _nextStart(DateTime now, TimeOfDay start) {
-    final candidate =
-        DateTime(now.year, now.month, now.day, start.hour, start.minute);
-    if (candidate.isAfter(now)) return candidate;
-    return candidate.add(const Duration(days: 1));
-  }
-
   DateTime _nextEnd(DateTime now, TimeOfDay start, TimeOfDay end) {
-    final startDate = _nextStart(now, start);
+    final startDate = _nextStartTime(now, start);
     var endDate = DateTime(
       startDate.year,
       startDate.month,
@@ -2619,7 +2614,7 @@ class _WindDownPlannerCard extends StatelessWidget {
       );
     }
 
-    final nextStart = _nextStart(now, startTime);
+    final nextStart = _nextStartTime(now, startTime);
     final windDownMinutes =
         schedule.windDownMinutes > 0 ? schedule.windDownMinutes : 30;
     final cutoffHours =
@@ -2750,8 +2745,8 @@ class _ScreenOffGoalCard extends ConsumerWidget {
       stream: Stream.periodic(const Duration(seconds: 30), (tick) => tick),
       builder: (context, snapshot) {
         final now = DateTime.now();
-        final remaining = end == null ? null : end.difference(now);
-        final endLabel = end == null ? null : _formatTime(end);
+        final remaining = end?.difference(now);
+        final endLabel = end?.clockLabel();
         final scheduleStart = _plannerStartTime(state, now);
         final scheduleEnd = _effectiveScheduleEnd(state.schedule, now);
         final windowStart = scheduleStart == null || scheduleEnd == null
@@ -2812,13 +2807,13 @@ class _ScreenOffGoalCard extends ConsumerWidget {
                         onPressed: () => notifier.startScreenOffGoal(
                           Duration(minutes: primaryMinutes),
                         ),
-                        child: Text('${primaryMinutes} min'),
+                        child: Text('$primaryMinutes min'),
                       ),
                       OutlinedButton(
                         onPressed: () => notifier.startScreenOffGoal(
                           Duration(minutes: secondaryMinutes),
                         ),
-                        child: Text('${secondaryMinutes} min'),
+                        child: Text('$secondaryMinutes min'),
                       ),
                     ],
                   )
@@ -2954,7 +2949,7 @@ class _SoundscapesCardState extends State<_SoundscapesCard> {
       orElse: () => _options.first,
     );
     final isPlaying = _activeId != null;
-    final remaining = _endTime == null ? null : _endTime!.difference(DateTime.now());
+    final remaining = _endTime?.difference(DateTime.now());
 
     return Card(
       child: Padding(
@@ -3079,7 +3074,7 @@ class _CaffeineCutoffCard extends StatelessWidget {
       );
     }
 
-    final nextStart = _nextStart(now, startTime);
+    final nextStart = _nextStartTime(now, startTime);
     final cutoffHours =
         state.caffeineCutoffHours > 0 ? state.caffeineCutoffHours : 6;
     final cutoff = nextStart.subtract(Duration(hours: cutoffHours));
@@ -3126,13 +3121,6 @@ class _CaffeineCutoffCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  DateTime _nextStart(DateTime now, TimeOfDay start) {
-    final candidate =
-        DateTime(now.year, now.month, now.day, start.hour, start.minute);
-    if (candidate.isAfter(now)) return candidate;
-    return candidate.add(const Duration(days: 1));
   }
 
   String _formatTime(DateTime time) {
@@ -3265,13 +3253,6 @@ class _BlueLightGoalCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  DateTime _nextStart(DateTime now, TimeOfDay start) {
-    final candidate =
-        DateTime(now.year, now.month, now.day, start.hour, start.minute);
-    if (candidate.isAfter(now)) return candidate;
-    return candidate.add(const Duration(days: 1));
   }
 
   String _formatTime(DateTime time) {
@@ -3724,6 +3705,13 @@ DateTime _currentOrNextStart(
   return startToday.add(const Duration(days: 1));
 }
 
+DateTime _nextStartTime(DateTime now, TimeOfDay start) {
+  final candidate =
+      DateTime(now.year, now.month, now.day, start.hour, start.minute);
+  if (candidate.isAfter(now)) return candidate;
+  return candidate.add(const Duration(days: 1));
+}
+
 TimeOfDay _sunsetLabel(AppState state, DateTime now) {
   if (state.sunsetTime != null &&
       state.sunsetUpdatedAt != null &&
@@ -3733,4 +3721,14 @@ TimeOfDay _sunsetLabel(AppState state, DateTime now) {
     return state.sunsetTime!;
   }
   return _approxSunsetTime(now);
+}
+
+extension _DateTimeClockLabel on DateTime {
+  String clockLabel() {
+    final local = toLocal();
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
 }

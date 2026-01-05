@@ -253,7 +253,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> setSleepGoalMinutes(int minutes) async {
     final current = state.value;
     if (current == null) return;
-    final clamped = minutes.clamp(240, 720) as int;
+    final clamped = minutes.clamp(240, 720).toInt();
     final updated = current.copyWith(sleepGoalMinutes: clamped);
     state = AsyncData(updated);
     await _persist(updated);
@@ -262,7 +262,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> setScreenOffGoalMinutes(int minutes) async {
     final current = state.value;
     if (current == null) return;
-    final clamped = minutes.clamp(15, 180) as int;
+    final clamped = minutes.clamp(15, 180).toInt();
     final updated = current.copyWith(screenOffGoalMinutes: clamped);
     state = AsyncData(updated);
     await _persist(updated);
@@ -271,7 +271,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> setCaffeineCutoffHours(int hours) async {
     final current = state.value;
     if (current == null) return;
-    final clamped = hours.clamp(2, 12) as int;
+    final clamped = hours.clamp(2, 12).toInt();
     final updated = current.copyWith(caffeineCutoffHours: clamped);
     state = AsyncData(updated);
     await _persist(updated);
@@ -280,7 +280,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> setBlueLightGoalMinutes(int minutes) async {
     final current = state.value;
     if (current == null) return;
-    final clamped = minutes.clamp(30, 240) as int;
+    final clamped = minutes.clamp(30, 240).toInt();
     final updated = current.copyWith(blueLightGoalMinutes: clamped);
     state = AsyncData(updated);
     await _persist(updated);
@@ -299,7 +299,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> setBedtimeModeAutoOffMinutes(int minutes) async {
     final current = state.value;
     if (current == null) return;
-    final clamped = minutes.clamp(0, 180) as int;
+    final clamped = minutes.clamp(0, 180).toInt();
     final updated = current.copyWith(
       bedtimeModeAutoOffMinutes: clamped,
       bedtimeModeAutoOffUntil: clamped == 0 ? null : current.bedtimeModeAutoOffUntil,
