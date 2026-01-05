@@ -53,6 +53,17 @@ void main() {
         child: const MaterialApp(home: HomeScreen()),
       ),
     );
+    await tester.pumpAndSettle();
+
+    final verticalScrollable = find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    );
+    await tester.scrollUntilVisible(
+      find.text('Weekly summary'),
+      400,
+      scrollable: verticalScrollable,
+    );
     await tester.pump();
 
     expect(find.text('Weekly summary'), findsOneWidget);
