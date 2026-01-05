@@ -22,6 +22,8 @@ class PremiumService {
   static const _productIds = {'nightbuddy_premium_lifetime'};
 
   bool _cached = false;
+  final StreamController<bool> _statusController =
+      StreamController<bool>.broadcast();
   List<ProductDetails> _products = [];
   late final Stream<List<PurchaseDetails>> _purchaseStream;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
@@ -30,19 +32,23 @@ class PremiumService {
     if (!_supportsPurchases) {
       _cached = false;
       _products = [];
+      _statusController.add(_cached);
       return;
     }
     _cached = await _loadStored();
+    _statusController.add(_cached);
     _purchaseStream = InAppPurchase.instance.purchaseStream;
     _subscription = _purchaseStream.listen(_handlePurchaseUpdates);
   }
 
   Future<void> dispose() async {
     await _subscription?.cancel();
+    await _statusController.close();
   }
 
   bool get isPremium => _cached;
   List<ProductDetails> get products => _products;
+  Stream<bool> get statusStream => _statusController.stream;
 
   Future<List<ProductDetails>> loadProducts() async {
     if (!_supportsPurchases) return _products;
@@ -82,6 +88,7 @@ class PremiumService {
     _cached = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_key, value);
+    _statusController.add(_cached);
   }
 
   Future<bool> _loadStored() async {

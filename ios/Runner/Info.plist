@@ -43,7 +43,9 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
+        <key>UIApplicationSupportsIndirectInputEvents</key>
+        <true/>
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>We use your location to calculate sunset time for wind-down planning.</string>
 </dict>
 </plist>

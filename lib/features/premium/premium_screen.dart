@@ -32,6 +32,17 @@ class PremiumScreen extends ConsumerWidget {
               const _Bullet(text: 'Advanced scheduling (weekend vs weekday)'),
               const _Bullet(text: 'Better sleep with deeper warmth tuning'),
               const SizedBox(height: 16),
+              if (state.isPremium)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Premium is active on this device.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.green),
+                  ),
+                ),
               products.when(
                 data: (items) {
                   final product = items.isNotEmpty ? items.first : null;

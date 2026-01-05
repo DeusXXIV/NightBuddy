@@ -21,6 +21,7 @@ class PresetChip extends StatelessWidget {
     final locked = preset.isPremium && isPremiumLocked;
     return ChoiceChip(
       selected: selected,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -38,7 +39,7 @@ class PresetChip extends StatelessWidget {
       onSelected: (_) => onSelected(),
       avatar: selected ? const Icon(Icons.check, size: 16) : null,
       showCheckmark: false,
-      disabledColor: Colors.grey.shade800,
+      disabledColor: Theme.of(context).colorScheme.surfaceVariant,
       backgroundColor: Colors.white.withAlpha((0.04 * 255).round()),
     );
   }

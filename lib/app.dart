@@ -12,12 +12,16 @@ class NightBuddyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(appStateProvider);
+    final highContrast = appState.maybeWhen(
+      data: (state) => state.highContrastEnabled,
+      orElse: () => false,
+    );
 
     return MaterialApp(
       title: 'NightBuddy',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.light(highContrast: highContrast),
+      darkTheme: AppTheme.dark(highContrast: highContrast),
       themeMode: ThemeMode.dark,
       home: appState.when(
         data: (state) {

@@ -71,6 +71,9 @@ class ScheduleConfig {
     required this.mode,
     required this.startTime,
     required this.endTime,
+    this.windDownMinutes = 0,
+    this.fadeOutMinutes = 0,
+    this.targetPresetId,
     this.weekendDifferent = false,
     this.weekendStartTime,
     this.weekendEndTime,
@@ -79,6 +82,9 @@ class ScheduleConfig {
   final FilterMode mode;
   final TimeOfDay? startTime;
   final TimeOfDay? endTime;
+  final int windDownMinutes;
+  final int fadeOutMinutes;
+  final String? targetPresetId;
   final bool weekendDifferent;
   final TimeOfDay? weekendStartTime;
   final TimeOfDay? weekendEndTime;
@@ -87,6 +93,9 @@ class ScheduleConfig {
     FilterMode? mode,
     TimeOfDay? startTime,
     TimeOfDay? endTime,
+    int? windDownMinutes,
+    int? fadeOutMinutes,
+    String? targetPresetId,
     bool? weekendDifferent,
     TimeOfDay? weekendStartTime,
     TimeOfDay? weekendEndTime,
@@ -95,6 +104,9 @@ class ScheduleConfig {
       mode: mode ?? this.mode,
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
+      windDownMinutes: windDownMinutes ?? this.windDownMinutes,
+      fadeOutMinutes: fadeOutMinutes ?? this.fadeOutMinutes,
+      targetPresetId: targetPresetId ?? this.targetPresetId,
       weekendDifferent: weekendDifferent ?? this.weekendDifferent,
       weekendStartTime: weekendStartTime ?? this.weekendStartTime,
       weekendEndTime: weekendEndTime ?? this.weekendEndTime,
@@ -106,6 +118,9 @@ class ScheduleConfig {
       'mode': mode.name,
       'startTime': _encodeTime(startTime),
       'endTime': _encodeTime(endTime),
+      'windDownMinutes': windDownMinutes,
+      'fadeOutMinutes': fadeOutMinutes,
+      'targetPresetId': targetPresetId,
       'weekendDifferent': weekendDifferent,
       'weekendStartTime': _encodeTime(weekendStartTime),
       'weekendEndTime': _encodeTime(weekendEndTime),
@@ -113,10 +128,18 @@ class ScheduleConfig {
   }
 
   factory ScheduleConfig.fromJson(Map<String, dynamic> json) {
+    final modeName = json['mode'] as String?;
+    final parsedMode = FilterMode.values.firstWhere(
+      (mode) => mode.name == modeName,
+      orElse: () => FilterMode.off,
+    );
     return ScheduleConfig(
-      mode: FilterMode.values.byName(json['mode'] as String),
+      mode: parsedMode,
       startTime: _decodeTime(json['startTime']),
       endTime: _decodeTime(json['endTime']),
+      windDownMinutes: json['windDownMinutes'] as int? ?? 0,
+      fadeOutMinutes: json['fadeOutMinutes'] as int? ?? 0,
+      targetPresetId: json['targetPresetId'] as String?,
       weekendDifferent: json['weekendDifferent'] as bool? ?? false,
       weekendStartTime: _decodeTime(json['weekendStartTime']),
       weekendEndTime: _decodeTime(json['weekendEndTime']),

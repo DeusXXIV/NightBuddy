@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/filter_models.dart';
 import '../../state/app_notifier.dart';
 import '../../state/app_state.dart';
+import '../../widgets/preset_chip.dart';
 import '../root/root_shell.dart';
 import '../premium/premium_screen.dart';
 
@@ -20,6 +21,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   late FilterMode _mode;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
+  int _windDownMinutes = 0;
+  int _fadeOutMinutes = 0;
+  String? _targetPresetId;
   bool _weekendDifferent = false;
   TimeOfDay? _weekendStart;
   TimeOfDay? _weekendEnd;
@@ -52,9 +56,16 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     _mode = schedule.mode;
     _startTime = schedule.startTime;
     _endTime = schedule.endTime;
+    _windDownMinutes = schedule.windDownMinutes;
+    _fadeOutMinutes = schedule.fadeOutMinutes;
+    _targetPresetId = schedule.targetPresetId;
     _weekendDifferent = schedule.weekendDifferent;
     _weekendStart = schedule.weekendStartTime;
     _weekendEnd = schedule.weekendEndTime;
+    if (_mode == FilterMode.scheduled) {
+      _startTime ??= const TimeOfDay(hour: 22, minute: 0);
+      _endTime ??= const TimeOfDay(hour: 6, minute: 0);
+    }
   }
 
   @override
@@ -69,6 +80,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (_mode == FilterMode.scheduled)
+                  _scheduleSummaryCard(state),
                 _modeTile(FilterMode.off, 'Off'),
                 _modeTile(FilterMode.alwaysOn, 'Always on'),
                 _modeTile(FilterMode.scheduled, 'Custom schedule'),
@@ -90,6 +103,93 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   Text(
                     'If end time is earlier than start time, it counts as next day.',
                     style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Wind-down',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  Text(
+                    'Gradually ramp the filter before the start time.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Slider(
+                    min: 0,
+                    max: 180,
+                    divisions: 12,
+                    value: _windDownMinutes.toDouble(),
+                    label: _windDownMinutes == 0
+                        ? 'Off'
+                        : '$_windDownMinutes min',
+                    onChanged: (value) {
+                      setState(() => _windDownMinutes = value.round());
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Fade-out',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  Text(
+                    'Gently ease the filter off after the end time.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Slider(
+                    min: 0,
+                    max: 120,
+                    divisions: 8,
+                    value: _fadeOutMinutes.toDouble(),
+                    label: _fadeOutMinutes == 0
+                        ? 'Off'
+                        : '$_fadeOutMinutes min',
+                    onChanged: (value) {
+                      setState(() => _fadeOutMinutes = value.round());
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Night preset',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  Text(
+                    'Pick a preset to use during the schedule and wind-down.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: const Text('Use current preset'),
+                            selected: _targetPresetId == null,
+                            onSelected: (_) {
+                              setState(() => _targetPresetId = null);
+                            },
+                          ),
+                        ),
+                        ...state.presets.map((preset) {
+                          final selected = _targetPresetId == preset.id;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: PresetChip(
+                              preset: preset,
+                              selected: selected,
+                              isPremiumLocked: !state.isPremium,
+                              onSelected: () {
+                                if (preset.isPremium && !state.isPremium) {
+                                  _promptPremium(context);
+                                  return;
+                                }
+                                setState(() => _targetPresetId = preset.id);
+                              },
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   SwitchListTile(
@@ -137,14 +237,30 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             padding: const EdgeInsets.all(16),
             child: ElevatedButton(
               onPressed: () async {
+                if (_mode == FilterMode.scheduled &&
+                    (_startTime == null || _endTime == null)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Select a start and end time to continue'),
+                    ),
+                  );
+                  return;
+                }
                 final navigator = Navigator.of(context);
+                final weekendStart =
+                    _weekendDifferent ? (_weekendStart ?? _startTime) : null;
+                final weekendEnd =
+                    _weekendDifferent ? (_weekendEnd ?? _endTime) : null;
                 final config = ScheduleConfig(
                   mode: _mode,
                   startTime: _startTime,
                   endTime: _endTime,
+                  windDownMinutes: _windDownMinutes,
+                  fadeOutMinutes: _fadeOutMinutes,
+                  targetPresetId: _targetPresetId,
                   weekendDifferent: _weekendDifferent && state.isPremium,
-                  weekendStartTime: _weekendDifferent ? _weekendStart : null,
-                  weekendEndTime: _weekendDifferent ? _weekendEnd : null,
+                  weekendStartTime: weekendStart,
+                  weekendEndTime: weekendEnd,
                 );
                 await ref
                     .read(appStateProvider.notifier)
@@ -172,9 +288,92 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     return RadioListTile<FilterMode>(
       value: mode,
       groupValue: _mode,
-      onChanged: (value) => setState(() => _mode = value!),
+      onChanged: (value) {
+        if (value == null) return;
+        _setMode(value);
+      },
       title: Text(label),
     );
+  }
+
+  Widget _scheduleSummaryCard(AppState state) {
+    final start = _startTime;
+    final end = _endTime;
+    final presetLabel = _targetPresetId == null
+        ? '${state.activePreset.name} (current)'
+        : state.presets
+            .firstWhere(
+              (preset) => preset.id == _targetPresetId,
+              orElse: () => state.activePreset,
+            )
+            .name;
+
+    if (start == null || end == null) {
+      return const Card(
+        child: ListTile(
+          leading: Icon(Icons.schedule),
+          title: Text('Schedule preview'),
+          subtitle: Text('Pick a start and end time to see the preview.'),
+        ),
+      );
+    }
+
+    final now = DateTime.now();
+    final nextStart = _nextStart(now, start);
+    final nextEnd = _nextEnd(now, start, end);
+    final windDownStart = _windDownMinutes > 0
+        ? nextStart.subtract(Duration(minutes: _windDownMinutes))
+        : null;
+    final fadeOutEnd = _fadeOutMinutes > 0
+        ? nextEnd.add(Duration(minutes: _fadeOutMinutes))
+        : null;
+    final summaryLines = [
+      'Next start: ${_formatDateTime(nextStart)}',
+      'Next end: ${_formatDateTime(nextEnd)}',
+      if (windDownStart != null)
+        'Wind-down starts: ${_formatDateTime(windDownStart)}',
+      if (fadeOutEnd != null)
+        'Fade-out ends: ${_formatDateTime(fadeOutEnd)}',
+      'Preset: $presetLabel',
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Schedule preview',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 6),
+            ...summaryLines.map(
+              (line) => Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  line,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: _mutedColor(context)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setMode(FilterMode mode) {
+    setState(() {
+      _mode = mode;
+      if (_mode == FilterMode.scheduled) {
+        _startTime ??= const TimeOfDay(hour: 22, minute: 0);
+        _endTime ??= const TimeOfDay(hour: 6, minute: 0);
+      }
+    });
   }
 
   Widget _timeRow(
@@ -208,6 +407,36 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     return '$hour:$minute $period';
   }
 
+  DateTime _nextStart(DateTime now, TimeOfDay start) {
+    final candidate =
+        DateTime(now.year, now.month, now.day, start.hour, start.minute);
+    if (candidate.isAfter(now)) return candidate;
+    return candidate.add(const Duration(days: 1));
+  }
+
+  DateTime _nextEnd(DateTime now, TimeOfDay start, TimeOfDay end) {
+    final startDate = _nextStart(now, start);
+    var endDate = DateTime(
+      startDate.year,
+      startDate.month,
+      startDate.day,
+      end.hour,
+      end.minute,
+    );
+    if (!endDate.isAfter(startDate)) {
+      endDate = endDate.add(const Duration(days: 1));
+    }
+    return endDate;
+  }
+
+  String _formatDateTime(DateTime time) {
+    final local = time.toLocal();
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+
   void _promptPremium(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -219,4 +448,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       MaterialPageRoute(builder: (_) => const PremiumScreen()),
     );
   }
+}
+
+Color _mutedColor(BuildContext context) {
+  return Theme.of(context).colorScheme.onSurfaceVariant;
 }

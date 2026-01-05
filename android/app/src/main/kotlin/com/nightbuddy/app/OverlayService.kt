@@ -1,5 +1,6 @@
-package com.example.nightbuddy
+package com.nightbuddy.app
 
+import android.app.AppOpsManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -17,11 +19,13 @@ import android.view.Gravity
 import android.view.OrientationEventListener
 import android.view.View
 import android.view.WindowManager
+import android.os.Process
 import android.hardware.display.DisplayManager
 import android.util.DisplayMetrics
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.graphics.ColorUtils
+import com.nightbuddy.app.BuildConfig
 
 class OverlayService : Service() {
     companion object {
@@ -34,17 +38,18 @@ class OverlayService : Service() {
             get() = "${BuildConfig.APPLICATION_ID}."
         val ACTION_START: String
             get() = "${actionPrefix}ACTION_START"
-        val ACTION_ENABLE: String
-            get() = "${actionPrefix}ACTION_ENABLE"
-        val ACTION_DISABLE: String
-            get() = "${actionPrefix}ACTION_DISABLE"
-        val ACTION_UPDATE: String
-            get() = "${actionPrefix}ACTION_UPDATE"
+        val ACTION_TOGGLE_FLASHLIGHT: String
+            get() = "${actionPrefix}ACTION_TOGGLE_FLASHLIGHT"
+        val ACTION_TOGGLE_FILTER: String
+            get() = "${actionPrefix}ACTION_TOGGLE_FILTER"
+        val ACTION_OVERLAY_STATUS: String
+            get() = "${actionPrefix}ACTION_OVERLAY_STATUS"
 
         const val EXTRA_TEMPERATURE = "temperature"
         const val EXTRA_OPACITY = "opacity"
         const val EXTRA_BRIGHTNESS = "brightness"
         const val EXTRA_ENABLE = "enable"
+        const val EXTRA_OVERLAY_ENABLED = "overlayEnabled"
     }
 
     private var isFilterEnabled = false
@@ -66,16 +71,11 @@ class OverlayService : Service() {
                 val enable = intent.getBooleanExtra(EXTRA_ENABLE, true)
                 if (enable) enableOverlay() else disableOverlay()
             }
-            ACTION_ENABLE -> enableOverlay()
-            ACTION_DISABLE -> disableOverlay()
-            ACTION_UPDATE -> {
-                payload = parsePayload(intent, payload)
-                if (isFilterEnabled) {
-                    overlayController.update(payload)
-                }
+            ACTION_TOGGLE_FLASHLIGHT -> {
+                toggleFlashlight()
             }
         }
-        startForeground(NOTIF_ID, buildNotification())
+        startForegroundWithType()
         return START_STICKY
     }
 
@@ -84,6 +84,8 @@ class OverlayService : Service() {
         overlayController.hide()
         lastKnownEnabled = false
         NotificationManagerCompat.from(this).cancel(NOTIF_ID)
+        FlashlightController.setTorch(this, false)
+        broadcastOverlayStatus(false)
     }
 
     private fun parsePayload(
@@ -104,31 +106,38 @@ class OverlayService : Service() {
         if (isFilterEnabled) {
             overlayController.update(payload)
             updateNotification()
+            broadcastOverlayStatus(true)
             return
         }
-        if (!OverlayServiceStarter.canDrawOverlays(this)) {
+        if (!overlayController.show(payload)) {
             disableOverlay()
             return
         }
         isFilterEnabled = true
         lastKnownEnabled = true
-        overlayController.show(payload)
         updateNotification()
+        broadcastOverlayStatus(true)
     }
 
     private fun disableOverlay() {
-        if (!isFilterEnabled) return
+        if (!isFilterEnabled) {
+            lastKnownEnabled = false
+            updateNotification()
+            broadcastOverlayStatus(false)
+            return
+        }
         isFilterEnabled = false
         lastKnownEnabled = false
         overlayController.hide()
         updateNotification()
+        broadcastOverlayStatus(false)
     }
 
     private fun buildNotification(): Notification {
-        val toggleIntent = Intent(this, OverlayService::class.java).apply {
-            action = if (isFilterEnabled) ACTION_DISABLE else ACTION_ENABLE
+        val toggleIntent = Intent(ACTION_TOGGLE_FILTER).apply {
+            setPackage(packageName)
         }
-        val pendingToggle = PendingIntent.getService(
+        val pendingToggle = PendingIntent.getBroadcast(
             this,
             0,
             toggleIntent,
@@ -142,25 +151,60 @@ class OverlayService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val showFlashAction = FlashlightController.hasFlash(this)
+        val flashActionIntent = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, OverlayService::class.java).apply { action = ACTION_TOGGLE_FLASHLIGHT },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_day)
             .setContentTitle("NightBuddy")
             .setContentText(
                 if (isFilterEnabled) "Blue light filter is ON"
                 else "Blue light filter is OFF"
             )
+            .setOnlyAlertOnce(true)
+            .setSound(null)
             .setOngoing(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(contentIntent)
             .addAction(android.R.drawable.ic_media_pause, actionText, pendingToggle)
-            .build()
+        if (showFlashAction) {
+            val flashText =
+                if (FlashlightController.isOn()) "Flash Off" else "Flash On"
+            builder.addAction(android.R.drawable.ic_menu_camera, flashText, flashActionIntent)
+        }
+        return builder.build()
     }
 
     private fun updateNotification() {
         NotificationManagerCompat.from(this).notify(NOTIF_ID, buildNotification())
+    }
+
+    private fun broadcastOverlayStatus(enabled: Boolean) {
+        val intent = Intent(ACTION_OVERLAY_STATUS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_OVERLAY_ENABLED, enabled)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun startForegroundWithType() {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIF_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
     }
 
     private fun ensureChannel() {
@@ -168,16 +212,29 @@ class OverlayService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "NightBuddy Overlay",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 enableLights(false)
                 enableVibration(false)
+                setSound(null, null)
                 setShowBadge(false)
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
+    }
+
+    private fun toggleFlashlight() {
+        if (!FlashlightController.hasFlash(this)) return
+        if (!FlashlightController.hasPermission(this)) {
+            FlashlightController.setTorch(this, false)
+            updateNotification()
+            return
+        }
+        val next = !FlashlightController.isOn()
+        FlashlightController.setTorch(this, next)
+        updateNotification()
     }
 
     private class OverlayController(private val appContext: Context) {
@@ -211,7 +268,7 @@ class OverlayService : Service() {
             }
         }
 
-        fun show(args: Map<String, Double>) {
+        fun show(args: Map<String, Double>): Boolean {
             val view = sharedView ?: View(appContext).apply {
                 systemUiVisibility =
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
@@ -224,14 +281,19 @@ class OverlayService : Service() {
                     windowManager.addView(created, overlayLayoutParams())
                     sharedView = created
                 } catch (_: Exception) {
+                    return false
                 }
             }
             view?.setBackgroundColor(computeColor(args))
             refreshLayout()
+            return view != null
         }
 
         fun update(args: Map<String, Double>) {
-            val view = sharedView ?: return show(args)
+            val view = sharedView ?: run {
+                show(args)
+                return
+            }
             view.setBackgroundColor(computeColor(args))
             refreshLayout()
         }
@@ -330,11 +392,25 @@ object OverlayServiceStarter {
     }
 
     fun canDrawOverlays(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(context)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        if (Settings.canDrawOverlays(context)) return true
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+            ?: return false
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                Process.myUid(),
+                context.packageName
+            )
         } else {
-            true
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW,
+                Process.myUid(),
+                context.packageName
+            )
         }
+        return mode == AppOpsManager.MODE_ALLOWED
     }
 
     fun requestPermission(activity: MainActivity): Boolean {
