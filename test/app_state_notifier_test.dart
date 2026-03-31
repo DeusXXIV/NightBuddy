@@ -132,42 +132,39 @@ class FakeLogService extends LogService {
 }
 
 void main() {
-  test('reconciles overlay state when native overlay is already running',
-      () async {
-    final stored = AppState.initial().copyWith(filterEnabled: false);
-    final storage = FakeStorageService(storedState: stored);
-    final overlay = FakeOverlayService(nativeEnabled: true);
+  test(
+    'reconciles overlay state when native overlay is already running',
+    () async {
+      final stored = AppState.initial().copyWith(filterEnabled: false);
+      final storage = FakeStorageService(storedState: stored);
+      final overlay = FakeOverlayService(nativeEnabled: true);
 
-    final container = ProviderContainer(
-      overrides: [
-        storageServiceProvider.overrideWithValue(storage),
-        overlayServiceProvider.overrideWithValue(overlay),
-        premiumServiceProvider.overrideWithValue(FakePremiumService()),
-        adsServiceProvider.overrideWithValue(FakeAdsService()),
-        bedtimeReminderServiceProvider
-            .overrideWithValue(FakeBedtimeReminderService()),
-        logServiceProvider.overrideWithValue(FakeLogService()),
-      ],
-    );
-    addTearDown(container.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          storageServiceProvider.overrideWithValue(storage),
+          overlayServiceProvider.overrideWithValue(overlay),
+          premiumServiceProvider.overrideWithValue(FakePremiumService()),
+          adsServiceProvider.overrideWithValue(FakeAdsService()),
+          bedtimeReminderServiceProvider.overrideWithValue(
+            FakeBedtimeReminderService(),
+          ),
+          logServiceProvider.overrideWithValue(FakeLogService()),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final state = await container.read(appStateProvider.future);
+      final state = await container.read(appStateProvider.future);
 
-    expect(state.filterEnabled, isTrue);
-    expect(storage.savedStates.isNotEmpty, isTrue);
-    expect(storage.savedStates.last.filterEnabled, isTrue);
-  });
+      expect(state.filterEnabled, isTrue);
+      expect(storage.savedStates.isNotEmpty, isTrue);
+      expect(storage.savedStates.last.filterEnabled, isTrue);
+    },
+  );
 
   test('snooze until next change uses upcoming schedule', () async {
     final now = DateTime.now();
-    final start = TimeOfDay(
-      hour: (now.hour + 1) % 24,
-      minute: now.minute,
-    );
-    final end = TimeOfDay(
-      hour: (now.hour + 2) % 24,
-      minute: now.minute,
-    );
+    final start = TimeOfDay(hour: (now.hour + 1) % 24, minute: now.minute);
+    final end = TimeOfDay(hour: (now.hour + 2) % 24, minute: now.minute);
     final schedule = ScheduleConfig(
       mode: FilterMode.scheduled,
       startTime: start,
@@ -185,8 +182,9 @@ void main() {
         overlayServiceProvider.overrideWithValue(overlay),
         premiumServiceProvider.overrideWithValue(FakePremiumService()),
         adsServiceProvider.overrideWithValue(FakeAdsService()),
-        bedtimeReminderServiceProvider
-            .overrideWithValue(FakeBedtimeReminderService()),
+        bedtimeReminderServiceProvider.overrideWithValue(
+          FakeBedtimeReminderService(),
+        ),
         logServiceProvider.overrideWithValue(FakeLogService()),
       ],
     );
@@ -201,4 +199,42 @@ void main() {
     expect(updated?.snoozeUntil, isNotNull);
     expect(updated!.snoozeUntil!.isAfter(DateTime.now()), isTrue);
   });
+
+  test(
+    'applyWindDownTemplate replaces empty routine with starter items',
+    () async {
+      final stored = AppState.initial().copyWith(windDownItems: const []);
+      final storage = FakeStorageService(storedState: stored);
+      final overlay = FakeOverlayService(nativeEnabled: false);
+
+      final container = ProviderContainer(
+        overrides: [
+          storageServiceProvider.overrideWithValue(storage),
+          overlayServiceProvider.overrideWithValue(overlay),
+          premiumServiceProvider.overrideWithValue(FakePremiumService()),
+          adsServiceProvider.overrideWithValue(FakeAdsService()),
+          bedtimeReminderServiceProvider.overrideWithValue(
+            FakeBedtimeReminderService(),
+          ),
+          logServiceProvider.overrideWithValue(FakeLogService()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(appStateProvider.future);
+      final notifier = container.read(appStateProvider.notifier);
+
+      await notifier.applyWindDownTemplate(const [
+        'Dim the lights',
+        'Silence notifications',
+        'Put the phone face down',
+      ]);
+
+      final updated = container.read(appStateProvider).value;
+      expect(updated?.windDownItems.length, 3);
+      expect(updated?.windDownItems.first.label, 'Dim the lights');
+      expect(updated?.windDownChecklist, isEmpty);
+      expect(storage.savedStates.last.windDownItems.length, 3);
+    },
+  );
 }

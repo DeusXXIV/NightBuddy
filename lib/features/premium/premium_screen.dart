@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
+import '../../constants/premium_policy.dart';
 import '../../services/premium_service.dart';
 import '../../state/app_notifier.dart';
 
@@ -23,14 +24,23 @@ class PremiumScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Unlock the full experience',
+                'Unlock more of NightBuddy',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 12),
-              const _Bullet(text: 'Remove ads'),
-              const _Bullet(text: 'Unlock extra presets and more custom slots'),
-              const _Bullet(text: 'Advanced scheduling (weekend vs weekday)'),
-              const _Bullet(text: 'Better sleep with deeper warmth tuning'),
+              _SectionLabel(
+                title: 'Included free',
+                subtitle: 'You can keep using NightBuddy without upgrading.',
+              ),
+              const SizedBox(height: 8),
+              ...kFreeHighlights.map((text) => _Bullet(text: text)),
+              const SizedBox(height: 16),
+              _SectionLabel(
+                title: 'Premium adds',
+                subtitle: 'Extra depth and convenience for repeat nights.',
+              ),
+              const SizedBox(height: 8),
+              ...kPremiumBenefits.map((text) => _Bullet(text: text)),
               const SizedBox(height: 16),
               if (state.isPremium)
                 Padding(
@@ -47,7 +57,7 @@ class PremiumScreen extends ConsumerWidget {
                 data: (items) {
                   final product = items.isNotEmpty ? items.first : null;
                   final priceText =
-                      product?.price ?? 'Loading price (configure in Play Console)';
+                      product?.price ?? 'Price will appear here when available';
                   return Card(
                     child: ListTile(
                       title: const Text('Premium'),
@@ -57,17 +67,14 @@ class PremiumScreen extends ConsumerWidget {
                             ? null
                             : () async {
                                 final ok = await premiumService.startPurchase();
-                                if (ok) {
-                                  await ref
-                                      .read(appStateProvider.notifier)
-                                      .setPremium(true);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Premium unlocked'),
+                                if (ok && context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Purchase started. Complete it in Play.',
                                       ),
-                                    );
-                                  }
+                                    ),
+                                  );
                                 } else if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
@@ -126,7 +133,7 @@ class PremiumScreen extends ConsumerWidget {
               ),
               const Spacer(),
               const Text(
-                'No price shown here. Configure real products and prices in Play Console.',
+                'If pricing is missing, try again in a moment.',
                 style: TextStyle(fontSize: 12),
               ),
             ],
@@ -156,6 +163,35 @@ class _Bullet extends StatelessWidget {
           Expanded(child: Text(text)),
         ],
       ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

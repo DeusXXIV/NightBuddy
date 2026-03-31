@@ -3,5 +3,5 @@
 const String kAndroidPackageId = 'com.nightbuddy.app';
 
 // Set to your hosted documents when ready; empty strings fall back to in-app text.
-const String kPrivacyPolicyUrl = '';
+const String kPrivacyPolicyUrl = 'https://nightbuddyprivacy.netlify.app/privacy';
 const String kTermsOfServiceUrl = '';

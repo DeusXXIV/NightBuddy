@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/app_notifier.dart';
+import '../audio/audio_screen.dart';
 import '../home/home_screen.dart';
-import '../premium/premium_screen.dart';
-import '../schedule/schedule_screen.dart';
+import '../journal/journal_screen.dart';
 import '../settings/settings_screen.dart';
 
 class RootShell extends ConsumerStatefulWidget {
@@ -41,9 +41,9 @@ class _RootShellState extends ConsumerState<RootShell>
   Widget build(BuildContext context) {
     final pages = [
       const HomeScreen(),
-      const ScheduleScreen(),
+      const JournalScreen(),
+      const AudioScreen(),
       const SettingsScreen(),
-      const PremiumScreen(),
     ];
 
     return Scaffold(
@@ -56,18 +56,21 @@ class _RootShellState extends ConsumerState<RootShell>
           });
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
           NavigationDestination(
-            icon: Icon(Icons.schedule_outlined),
-            label: 'Schedule',
+            icon: Icon(Icons.bedtime_outlined),
+            label: 'Tonight',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.auto_graph_outlined),
+            label: 'Journal',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.graphic_eq_outlined),
+            label: 'Audio',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             label: 'Settings',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.workspace_premium_outlined),
-            label: 'Premium',
           ),
         ],
       ),

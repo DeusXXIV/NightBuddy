@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../constants/premium_policy.dart';
 import '../models/filter_models.dart';
+import '../models/mind_unload_entry.dart';
 import '../models/sleep_journal.dart';
 import '../services/overlay_service.dart';
 import '../services/premium_service.dart';
@@ -27,8 +29,9 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   late final OverlayService _overlayService = ref.read(overlayServiceProvider);
   late final PremiumService _premiumService = ref.read(premiumServiceProvider);
   late final AdsService _adsService = ref.read(adsServiceProvider);
-  late final BedtimeReminderService _bedtimeReminderService =
-      ref.read(bedtimeReminderServiceProvider);
+  late final BedtimeReminderService _bedtimeReminderService = ref.read(
+    bedtimeReminderServiceProvider,
+  );
   late final SunsetService _sunsetService = ref.read(sunsetServiceProvider);
   late final LogService _logService = ref.read(logServiceProvider);
   Timer? _scheduleTimer;
@@ -43,8 +46,10 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   StreamSubscription<void>? _toggleRequestSubscription;
   ScheduleEvent? _pendingScheduleEvent;
   static const int _maxSleepJournalEntries = 60;
+  static const int _maxMindUnloadEntries = 40;
   static const String _customPresetPrefix = 'custom_';
   static const Duration _overlayWatchdogInterval = Duration(minutes: 5);
+  static const int _maxFreeCustomPresets = kFreeCustomPresetLimit;
 
   @override
   Future<AppState> build() async {
@@ -52,8 +57,9 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     await _premiumService.initialize();
     await _adsService.initialize();
     await _logService.initialize();
-    _premiumStatusSubscription ??=
-        _premiumService.statusStream.listen(_handlePremiumStatus);
+    _premiumStatusSubscription ??= _premiumService.statusStream.listen(
+      _handlePremiumStatus,
+    );
     final stored = await _storage.loadState();
     final premiumOverride = _premiumService.isPremium;
     var baseState = (stored ?? AppState.initial()).copyWith(
@@ -66,8 +72,10 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
         await _persist(baseState);
       }
     }
-    final refreshedChecklist =
-        _ensureWindDownChecklistFresh(baseState, DateTime.now());
+    final refreshedChecklist = _ensureWindDownChecklistFresh(
+      baseState,
+      DateTime.now(),
+    );
     if (!identical(refreshedChecklist, baseState)) {
       baseState = refreshedChecklist;
       await _persist(baseState);
@@ -123,18 +131,46 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     return true;
   }
 
-  Future<void> updateActivePreset({
+  Future<void> setFavoritePreset(String? id) async {
+    final current = state.value;
+    if (current == null) return;
+    final updated = current.copyWith(favoritePresetId: id);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> setFavoriteSleepTrack(String? id) async {
+    final current = state.value;
+    if (current == null) return;
+    final updated = current.copyWith(favoriteSleepTrackId: id);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> setPreferredSleepTimerMinutes(int minutes) async {
+    final current = state.value;
+    if (current == null) return;
+    final clamped = minutes.clamp(15, 120);
+    final updated = current.copyWith(preferredSleepTimerMinutes: clamped);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<bool> updateActivePreset({
     double? temperature,
     double? opacity,
     double? brightness,
   }) async {
     final current = state.value;
-    if (current == null) return;
+    if (current == null) return false;
     final active = current.activePreset;
     final nextTemperature = temperature ?? active.temperature;
     final nextOpacity = opacity ?? active.opacity;
     final nextBrightness = brightness ?? active.brightness;
     if (!active.isCustom) {
+      if (!_canAddCustomPreset(current)) {
+        return false;
+      }
       final name = _nextCustomPresetName(current.presets);
       final customPreset = FilterPreset(
         id: _makeCustomPresetId(),
@@ -151,7 +187,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
       state = AsyncData(updated);
       await _persist(updated);
       await _syncOverlay(updated);
-      return;
+      return true;
     }
     final updatedPresets = current.presets.map((preset) {
       if (preset.id != active.id) return preset;
@@ -168,15 +204,13 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     state = AsyncData(updated);
     await _persist(updated);
     await _syncOverlay(updated);
+    return true;
   }
 
   Future<bool> toggleOverlay(bool enabled) async {
     final current = state.value;
     if (current == null) return false;
-    return _requestFilterEnabled(
-      enabled,
-      clearSnooze: true,
-    );
+    return _requestFilterEnabled(enabled, clearSnooze: true);
   }
 
   Future<void> updateSchedule(ScheduleConfig schedule) async {
@@ -225,6 +259,27 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     final updated = current.copyWith(sleepCheckInEnabled: enabled);
     state = AsyncData(updated);
     await _persist(updated);
+    await _syncCheckInReminder(updated);
+  }
+
+  Future<void> snoozeRemindersFor(Duration duration) async {
+    final current = state.value;
+    if (current == null) return;
+    final until = DateTime.now().add(duration);
+    final updated = current.copyWith(remindersSnoozedUntil: until);
+    state = AsyncData(updated);
+    await _persist(updated);
+    await _syncBedtimeReminder(updated);
+    await _syncCheckInReminder(updated);
+  }
+
+  Future<void> clearReminderSnooze() async {
+    final current = state.value;
+    if (current == null || current.remindersSnoozedUntil == null) return;
+    final updated = current.copyWith(remindersSnoozedUntil: null);
+    state = AsyncData(updated);
+    await _persist(updated);
+    await _syncBedtimeReminder(updated);
     await _syncCheckInReminder(updated);
   }
 
@@ -302,7 +357,9 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     final clamped = minutes.clamp(0, 180).toInt();
     final updated = current.copyWith(
       bedtimeModeAutoOffMinutes: clamped,
-      bedtimeModeAutoOffUntil: clamped == 0 ? null : current.bedtimeModeAutoOffUntil,
+      bedtimeModeAutoOffUntil: clamped == 0
+          ? null
+          : current.bedtimeModeAutoOffUntil,
     );
     state = AsyncData(updated);
     await _persist(updated);
@@ -326,20 +383,24 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> toggleScreenOffNotifications(bool enabled) async {
     final current = state.value;
     if (current == null) return;
-    final updated =
-        current.copyWith(screenOffNotificationsEnabled: enabled);
+    final updated = current.copyWith(screenOffNotificationsEnabled: enabled);
     state = AsyncData(updated);
     await _persist(updated);
     if (!enabled) {
       await _bedtimeReminderService.cancelScreenOffNotifications();
     } else if (updated.screenOffUntil != null) {
-      await _bedtimeReminderService
-          .scheduleScreenOffNotifications(updated.screenOffUntil!);
+      await _bedtimeReminderService.scheduleScreenOffNotifications(
+        updated.screenOffUntil!,
+      );
     }
   }
 
   Future<void> toggleHighContrast(bool enabled) async {
     await _update((state) => state.copyWith(highContrastEnabled: enabled));
+  }
+
+  Future<void> toggleShowDebugTools(bool enabled) async {
+    await _update((state) => state.copyWith(showDebugTools: enabled));
   }
 
   Future<void> addWindDownItem(String label) async {
@@ -349,20 +410,53 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     if (trimmed.isEmpty) return;
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final updated = current.copyWith(
-      windDownItems: [...current.windDownItems, WindDownItem(id: id, label: trimmed)],
+      windDownItems: [
+        ...current.windDownItems,
+        WindDownItem(id: id, label: trimmed),
+      ],
     );
     state = AsyncData(updated);
     await _persist(updated);
   }
 
-  Future<void> addCustomPreset({
+  Future<void> applyWindDownTemplate(List<String> labels) async {
+    final current = state.value;
+    if (current == null) return;
+    final normalized = labels
+        .map((label) => label.trim())
+        .where((label) => label.isNotEmpty)
+        .toList();
+    if (normalized.isEmpty) return;
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final items = <WindDownItem>[];
+    for (var index = 0; index < normalized.length; index += 1) {
+      items.add(
+        WindDownItem(
+          id: 'template_${timestamp}_$index',
+          label: normalized[index],
+        ),
+      );
+    }
+    final updated = current.copyWith(
+      windDownItems: items,
+      windDownChecklistDate: _todayDate(DateTime.now()),
+      windDownChecklist: const {},
+    );
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<bool> addCustomPreset({
     required String name,
     required FilterPreset basePreset,
   }) async {
     final current = state.value;
-    if (current == null) return;
+    if (current == null) return false;
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) return false;
+    if (!_canAddCustomPreset(current)) {
+      return false;
+    }
     final preset = FilterPreset(
       id: _makeCustomPresetId(),
       name: trimmed,
@@ -378,6 +472,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     state = AsyncData(updated);
     await _persist(updated);
     await _syncOverlay(updated);
+    return true;
   }
 
   Future<void> renameCustomPreset(String id, String name) async {
@@ -405,11 +500,14 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     final remaining = current.presets.where((item) => item.id != id).toList();
     final fallback = remaining.firstWhere(
       (item) => !item.isPremium,
-      orElse: () => remaining.isNotEmpty ? remaining.first : current.activePreset,
+      orElse: () =>
+          remaining.isNotEmpty ? remaining.first : current.activePreset,
     );
     var updated = current.copyWith(
       presets: remaining,
-      activePresetId: current.activePresetId == id ? fallback.id : current.activePresetId,
+      activePresetId: current.activePresetId == id
+          ? fallback.id
+          : current.activePresetId,
     );
     if (updated.bedtimeModePresetId == id) {
       updated = updated.copyWith(bedtimeModePresetId: null);
@@ -427,8 +525,9 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> removeWindDownItem(String id) async {
     final current = state.value;
     if (current == null) return;
-    final updatedItems =
-        current.windDownItems.where((item) => item.id != id).toList();
+    final updatedItems = current.windDownItems
+        .where((item) => item.id != id)
+        .toList();
     final updatedChecklist = Map<String, bool>.from(current.windDownChecklist);
     updatedChecklist.remove(id);
     final updated = current.copyWith(
@@ -471,11 +570,10 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     } else {
       updatedChecklist.remove(id);
     }
-    final updated = refreshed.copyWith(
-      windDownChecklist: updatedChecklist,
-    );
+    final updated = refreshed.copyWith(windDownChecklist: updatedChecklist);
     state = AsyncData(updated);
     await _persist(updated);
+    await _updateWindDownCompletion(updated);
   }
 
   Future<void> resetWindDownChecklist() async {
@@ -610,6 +708,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> endSleepJournal({
     required int quality,
     String notes = '',
+    List<String> tags = const [],
   }) async {
     final current = state.value;
     final startedAt = current?.sleepJournalActiveStart;
@@ -620,6 +719,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
       endedAt: endedAt,
       quality: quality.clamp(1, 5),
       notes: notes.trim(),
+      tags: tags,
     );
     final entries = [
       entry,
@@ -645,12 +745,116 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     await _persist(updated);
   }
 
+  Future<void> updateSleepJournalEntry(
+    int index,
+    SleepJournalEntry entry,
+  ) async {
+    final current = state.value;
+    if (current == null) return;
+    if (index < 0 || index >= current.sleepJournalEntries.length) return;
+    final entries = [...current.sleepJournalEntries];
+    entries[index] = entry;
+    final updated = current.copyWith(sleepJournalEntries: entries);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
   Future<void> clearSleepJournal() async {
     final current = state.value;
     if (current == null) return;
     final updated = current.copyWith(
       sleepJournalEntries: const [],
       sleepJournalActiveStart: null,
+    );
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> addMindUnloadEntry({
+    required String text,
+    required String category,
+  }) async {
+    final current = state.value;
+    if (current == null) return;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    final entry = MindUnloadEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      createdAt: DateTime.now(),
+      text: trimmed,
+      category: category.trim().isEmpty ? 'Thought' : category.trim(),
+    );
+    final entries = [
+      entry,
+      ...current.mindUnloadEntries,
+    ].take(_maxMindUnloadEntries).toList();
+    final updated = current.copyWith(mindUnloadEntries: entries);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> toggleMindUnloadResolved(String id) async {
+    final current = state.value;
+    if (current == null) return;
+    final entries = current.mindUnloadEntries
+        .map(
+          (entry) => entry.id == id
+              ? entry.copyWith(resolved: !entry.resolved)
+              : entry,
+        )
+        .toList();
+    final updated = current.copyWith(mindUnloadEntries: entries);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> removeMindUnloadEntry(String id) async {
+    final current = state.value;
+    if (current == null) return;
+    final entries = current.mindUnloadEntries
+        .where((entry) => entry.id != id)
+        .toList();
+    final updated = current.copyWith(mindUnloadEntries: entries);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> clearResolvedMindUnloadEntries() async {
+    final current = state.value;
+    if (current == null) return;
+    final entries = current.mindUnloadEntries
+        .where((entry) => !entry.resolved)
+        .toList();
+    final updated = current.copyWith(mindUnloadEntries: entries);
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> toggleEnvironmentCheckItem(String id, bool value) async {
+    final current = state.value;
+    if (current == null) return;
+    final today = _todayDate(DateTime.now());
+    final isCurrent =
+        current.environmentChecklistDate != null &&
+        _isSameDay(current.environmentChecklistDate!, today);
+    final checklist = isCurrent
+        ? Map<String, bool>.from(current.environmentChecklist)
+        : <String, bool>{};
+    checklist[id] = value;
+    final updated = current.copyWith(
+      environmentChecklistDate: today,
+      environmentChecklist: checklist,
+    );
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> resetEnvironmentChecklist() async {
+    final current = state.value;
+    if (current == null) return;
+    final updated = current.copyWith(
+      environmentChecklistDate: _todayDate(DateTime.now()),
+      environmentChecklist: const {},
     );
     state = AsyncData(updated);
     await _persist(updated);
@@ -694,14 +898,17 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> _syncBedtimeReminder(AppState state) async {
     await _bedtimeReminderService.updateReminders(
       schedule: state.schedule,
-      enabled: state.bedtimeReminderEnabled,
+      enabled:
+          state.bedtimeReminderEnabled &&
+          !state.isReminderSnoozed(DateTime.now()),
       leadMinutes: state.bedtimeReminderMinutes,
     );
   }
 
   Future<void> _syncCheckInReminder(AppState state) async {
     await _bedtimeReminderService.updateCheckInReminder(
-      enabled: state.sleepCheckInEnabled,
+      enabled:
+          state.sleepCheckInEnabled && !state.isReminderSnoozed(DateTime.now()),
       time: state.sleepCheckInTime,
     );
   }
@@ -712,6 +919,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
       if (current == null) return;
       await _refreshWindDownChecklist(current);
       await _refreshFlashlightState(current);
+      await _refreshReminderSnooze(current);
       if (_shouldRunOverlayWatchdog(DateTime.now())) {
         await _runOverlayWatchdog(current);
       }
@@ -726,8 +934,9 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   }
 
   void _startOverlayStatusListener() {
-    _overlayStatusSubscription ??=
-        _overlayService.overlayStatusStream.listen((enabled) async {
+    _overlayStatusSubscription ??= _overlayService.overlayStatusStream.listen((
+      enabled,
+    ) async {
       final current = state.value;
       if (current == null || current.filterEnabled == enabled) return;
       final now = DateTime.now();
@@ -742,8 +951,9 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   }
 
   void _startToggleRequestListener() {
-    _toggleRequestSubscription ??=
-        _overlayService.toggleRequests.listen((_) async {
+    _toggleRequestSubscription ??= _overlayService.toggleRequests.listen((
+      _,
+    ) async {
       final current = state.value;
       if (current == null) return;
       await toggleOverlay(!current.filterEnabled);
@@ -845,12 +1055,10 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   Future<void> _clearExpiredBedtimeModeAutoOff() async {
     final current = state.value;
     if (current == null || current.bedtimeModeAutoOffUntil == null) return;
-    await _requestFilterEnabled(
-      false,
-      clearSnooze: false,
+    await _requestFilterEnabled(false, clearSnooze: false);
+    final updated = (state.value ?? current).copyWith(
+      bedtimeModeAutoOffUntil: null,
     );
-    final updated = (state.value ?? current)
-        .copyWith(bedtimeModeAutoOffUntil: null);
     state = AsyncData(updated);
     await _persist(updated);
     _armBedtimeModeAutoOff(updated);
@@ -879,10 +1087,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
       await _logService.logEvent(
         type: 'overlay_mismatch',
         message: 'Overlay status mismatch after sync.',
-        details: {
-          'expected': shouldEnable,
-          'actual': nativeEnabled,
-        },
+        details: {'expected': shouldEnable, 'actual': nativeEnabled},
       );
     }
     return nativeEnabled;
@@ -938,10 +1143,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     }
     final result = await _sunsetService.fetchSunsetTime(now);
     if (result == null) return current;
-    final updated = current.copyWith(
-      sunsetTime: result,
-      sunsetUpdatedAt: now,
-    );
+    final updated = current.copyWith(sunsetTime: result, sunsetUpdatedAt: now);
     await _persist(updated);
     return updated;
   }
@@ -964,6 +1166,49 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
     await _persist(refreshed);
   }
 
+  Future<void> _updateWindDownCompletion(AppState current) async {
+    final date = current.windDownChecklistDate;
+    if (date == null) return;
+    final items = current.windDownItems;
+    if (items.isEmpty) return;
+    final completedAll = items.every(
+      (item) => current.windDownChecklist[item.id] == true,
+    );
+    if (!completedAll) return;
+    final dateKey = _dateKey(date);
+    if (current.windDownCompletedDates.contains(dateKey)) return;
+    final completedDates = [...current.windDownCompletedDates, dateKey];
+    var updated = current.copyWith(windDownCompletedDates: completedDates);
+    if (_shouldPromptReview(updated, date)) {
+      updated = updated.copyWith(reviewPromptPending: true);
+    }
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> recordReviewPromptHandled() async {
+    final current = state.value;
+    if (current == null) return;
+    final updated = current.copyWith(
+      reviewPromptPending: false,
+      reviewPromptCount: current.reviewPromptCount + 1,
+      reviewPromptedAt: DateTime.now(),
+    );
+    state = AsyncData(updated);
+    await _persist(updated);
+  }
+
+  Future<void> _refreshReminderSnooze(AppState current) async {
+    final until = current.remindersSnoozedUntil;
+    if (until == null) return;
+    if (DateTime.now().isBefore(until)) return;
+    final updated = current.copyWith(remindersSnoozedUntil: null);
+    state = AsyncData(updated);
+    await _persist(updated);
+    await _syncBedtimeReminder(updated);
+    await _syncCheckInReminder(updated);
+  }
+
   AppState _ensureWindDownChecklistFresh(AppState state, DateTime now) {
     if (state.windDownChecklistDate != null &&
         _isSameDay(state.windDownChecklistDate!, now)) {
@@ -976,6 +1221,13 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   }
 
   DateTime _todayDate(DateTime now) => DateTime(now.year, now.month, now.day);
+
+  String _dateKey(DateTime date) {
+    final local = date.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$month-$day';
+  }
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -1027,6 +1279,41 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
       if (scheduleChanged) {
         updated = updated.copyWith(schedule: schedule);
       }
+      final customPresets = updated.presets
+          .where((preset) => preset.isCustom)
+          .toList();
+      if (customPresets.length > _maxFreeCustomPresets) {
+        final keepIds = <String>{};
+        if (updated.activePreset.isCustom) {
+          keepIds.add(updated.activePresetId);
+        }
+        for (final preset in customPresets) {
+          if (keepIds.length >= _maxFreeCustomPresets) break;
+          keepIds.add(preset.id);
+        }
+        final filtered = updated.presets
+            .where((preset) => !preset.isCustom || keepIds.contains(preset.id))
+            .toList();
+        updated = updated.copyWith(presets: filtered);
+        if (updated.bedtimeModePresetId != null &&
+            !keepIds.contains(updated.bedtimeModePresetId)) {
+          updated = updated.copyWith(bedtimeModePresetId: null);
+        }
+        final targetPresetId = updated.schedule.targetPresetId;
+        if (targetPresetId != null && !keepIds.contains(targetPresetId)) {
+          updated = updated.copyWith(
+            schedule: updated.schedule.copyWith(targetPresetId: null),
+          );
+        }
+        if (updated.activePreset.isCustom &&
+            !keepIds.contains(updated.activePresetId)) {
+          final fallback = filtered.firstWhere(
+            (preset) => !preset.isPremium,
+            orElse: () => filtered.first,
+          );
+          updated = updated.copyWith(activePresetId: fallback.id);
+        }
+      }
     }
     state = AsyncData(updated);
     await _persist(updated);
@@ -1040,6 +1327,50 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
   String _nextCustomPresetName(List<FilterPreset> presets) {
     final count = presets.where((preset) => preset.isCustom).length + 1;
     return 'Custom $count';
+  }
+
+  bool _canAddCustomPreset(AppState current) {
+    if (current.isPremium) return true;
+    final count = current.presets.where((preset) => preset.isCustom).length;
+    return count < _maxFreeCustomPresets;
+  }
+
+  bool _shouldPromptReview(AppState current, DateTime completedDate) {
+    if (current.reviewPromptPending || current.reviewPromptCount > 0) {
+      return false;
+    }
+    final streak = _windDownStreak(
+      current.windDownCompletedDates,
+      completedDate,
+    );
+    if (streak >= 3) return true;
+    return current.windDownCompletedDates.length >= 5;
+  }
+
+  int _windDownStreak(List<String> dateKeys, DateTime completedDate) {
+    if (dateKeys.isEmpty) return 0;
+    final set = dateKeys.map(_parseDateKey).whereType<DateTime>().toSet();
+    var day = DateTime(
+      completedDate.year,
+      completedDate.month,
+      completedDate.day,
+    );
+    var streak = 0;
+    while (set.contains(day)) {
+      streak += 1;
+      day = day.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  DateTime? _parseDateKey(String key) {
+    final parts = key.split('-');
+    if (parts.length != 3) return null;
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final day = int.tryParse(parts[2]);
+    if (year == null || month == null || day == null) return null;
+    return DateTime(year, month, day);
   }
 
   bool _shouldRunOverlayWatchdog(DateTime now) {
@@ -1071,10 +1402,7 @@ class AppStateNotifier extends AsyncNotifier<AppState> {
         await _logService.logEvent(
           type: 'overlay_watchdog_mismatch',
           message: 'Overlay status mismatch during watchdog check.',
-          details: {
-            'expected': shouldEnable,
-            'actual': nativeEnabled,
-          },
+          details: {'expected': shouldEnable, 'actual': nativeEnabled},
         );
         await _syncOverlay(current);
       }

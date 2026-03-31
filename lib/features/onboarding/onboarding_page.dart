@@ -8,6 +8,7 @@ import '../../state/app_notifier.dart';
 import '../../state/app_state.dart';
 import '../../services/overlay_service.dart';
 import '../../services/log_service.dart';
+import '../../widgets/premium_ui.dart';
 import '../../widgets/preset_chip.dart';
 
 class OnboardingPage extends ConsumerStatefulWidget {
@@ -33,7 +34,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   void initState() {
     super.initState();
     final state = ref.read(appStateProvider).value ?? AppState.initial();
-    _initialMode = state.schedule.mode;
+    _initialMode =
+        state.schedule.mode == FilterMode.off ? FilterMode.scheduled : state.schedule.mode;
     _startTime = state.schedule.startTime ?? const TimeOfDay(hour: 22, minute: 0);
     _endTime = state.schedule.endTime ?? const TimeOfDay(hour: 6, minute: 0);
     _bedtimeReminderEnabled = state.bedtimeReminderEnabled;
@@ -49,13 +51,8 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
       _OnboardingCard(
         title: 'Welcome to NightBuddy',
         description:
-            'Reduce blue light and keep your eyes comfortable at night.',
+            'Set your bedtime, schedule, and starter preset in a quick 3-step setup.',
         icon: Icons.nightlight_round,
-      ),
-      _OnboardingCard(
-        title: 'Warmer light, less strain',
-        description: 'Switch to a warm tint that is easier on your eyes.',
-        icon: Icons.wb_twilight,
       ),
       _overlayPermissionCard(context),
       _quickSetupCard(context, appState),
@@ -301,10 +298,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   isPremiumLocked: !state.isPremium,
                   onSelected: locked
                       ? () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Premium preset - upgrade to unlock'),
-                            ),
+                          showPremiumLockedSnackBar(
+                            context,
+                            featureName: preset.name,
                           );
                         }
                       : () => setState(() => _selectedPresetId = preset.id),

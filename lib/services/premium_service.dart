@@ -96,11 +96,13 @@ class PremiumService {
     return prefs.getBool(_key) ?? false;
   }
 
-  Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
+  Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {  
     if (!_supportsPurchases) return;
     for (final purchase in purchases) {
-      if (purchase.status == PurchaseStatus.purchased ||
-          purchase.status == PurchaseStatus.restored) {
+      final isRelevant = _productIds.contains(purchase.productID);
+      if (isRelevant &&
+          (purchase.status == PurchaseStatus.purchased ||
+              purchase.status == PurchaseStatus.restored)) {
         await setPremium(true);
       }
       if (purchase.pendingCompletePurchase) {

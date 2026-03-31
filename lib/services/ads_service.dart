@@ -29,9 +29,9 @@ class AdsService {
   AdRequest get _adRequest =>
       const AdRequest(keywords: ['blue light filter', 'sleep', 'health']);
 
-  String get bannerAdUnitId => 'ca-app-pub-3940256099942544/6300978111';
+  String get bannerAdUnitId => 'ca-app-pub-7274499058887640/8386573045';
 
-  String get interstitialAdUnitId => 'ca-app-pub-3940256099942544/1033173712';
+  String get interstitialAdUnitId => 'ca-app-pub-7274499058887640/4966202780';
 
   Future<void> loadInterstitial() async {
     if (!_supportsAds) return;

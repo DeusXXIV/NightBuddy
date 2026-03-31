@@ -1,21 +1,24 @@
 # Changelog
 
 ## Unreleased
-- Reconciled overlay state on app start/resume to recover from native overlay drift.
-- Added a wind-down planner card that maps steps to the scheduled bedtime.
-- Added a screen-off goal timer card for a no-phone window.
-- Added a caffeine cutoff card tied to the scheduled bedtime.
-- Added a bedtime mode quick action on the home screen.
-- Added blue-light goal progress and a morning check-in quick log card.
-- Persisted the screen-off goal across app restarts.
-- Added settings to customize blue-light goal minutes.
-- Added quick preset buttons for blue-light goal durations.
-- Added screen-off goal defaults and caffeine cutoff settings.
-- Added bedtime mode options and a wind-down checklist editor.
-- Added a sunset sync toggle for planning.
-- Added location-based sunset sync and screen-off notifications.
-- Added soundscapes with a sleep timer and CSV export for sleep logs.
-- Added reorderable wind-down checklist and bedtime mode auto-off.
+- No changes yet.
+
+## 2.0.0 - 2026-04-01
+- Reorganized the app into dedicated `Tonight`, `Journal`, `Audio`, and `Settings` tabs for a clearer nightly flow.
+- Added a guided Tonight experience with step-focused progression, carry-over support, and calmer done-for-tonight states.
+- Expanded bedtime support with Mind Unload, Environment Check, a dedicated wind-down routine editor, and usual-night defaults.
+- Improved filter tuning with a mock phone preview, better preset guidance, favorites, and faster repeat actions.
+- Added shared sleep-audio playback with favorites, remembered timers, live status, and `Start usual night` automation.
+- Standardized premium policy and in-app upgrade treatment across audio, journal, settings, onboarding, and schedule flows.
+- Strengthened test/CI coverage with repo-level testing guidance, updated GitHub Actions checks, and broader widget/service regression coverage.
+
+## 1.2.0 - 2026-01-17
+- Added premium gating for custom presets, weekly trends, and CSV export.
+- Added Insights v1 with bedtime consistency score and 7-day trend summary.
+- Polished sunset sync with clearer preview and updated timing details.
+- Refined onboarding flow with a focused 3-step setup.
+- Added in-app review prompt after wind-down completion milestones.
+
 ## 1.1.0 - 2025-12-27
 - Avoided requesting reminder permissions on cold start unless reminders are enabled.
 - Refactored overlay control to a single Dart authority with event-based scheduling.

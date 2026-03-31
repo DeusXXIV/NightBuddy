@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -7,13 +8,17 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../constants/app_links.dart';
+import '../../constants/premium_policy.dart';
 import '../../models/filter_models.dart';
 import '../../state/app_notifier.dart';
 import '../../services/bedtime_reminder_service.dart';
 import '../../services/overlay_service.dart';
 import '../../state/app_state.dart';
 import '../../widgets/filter_preview_overlay.dart';
+import '../../widgets/premium_ui.dart';
 import '../schedule/schedule_screen.dart';
+import '../premium/premium_screen.dart';
+import '../home/widgets/usual_night_setup_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -23,537 +28,821 @@ class SettingsScreen extends ConsumerWidget {
     final appState = ref.watch(appStateProvider);
 
     return appState.when(
-      data: (state) => Scaffold(
-        appBar: AppBar(title: const Text('Settings')),
-        body: ListView(
+      data: (state) => _SettingsHome(state: state),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (error, _) => Scaffold(body: Center(child: Text('Error: $error'))),
+    );
+  }
+}
+
+class _SettingsIntroCard extends StatelessWidget {
+  const _SettingsIntroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SwitchListTile(
-              title: const Text('Show notification shortcut'),
-              subtitle: const Text('Quick toggle to disable or enable filter'),
-              value: state.notificationShortcutEnabled,
-              onChanged: (value) {
-                ref
-                    .read(appStateProvider.notifier)
-                    .toggleNotificationShortcut(value);
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Start on boot reminder'),
-              subtitle: const Text(
-                'Show reminder to enable overlay after reboot',
-              ),
-              value: state.startOnBootReminder,
-              onChanged: (value) {
-                ref
-                    .read(appStateProvider.notifier)
-                    .toggleStartOnBootReminder(value);
-              },
-            ),
-            SwitchListTile(
-              title: const Text('High contrast mode'),
-              subtitle: const Text('Boost contrast for low-light readability.'),
-              value: state.highContrastEnabled,
-              onChanged: (value) {
-                ref
-                    .read(appStateProvider.notifier)
-                    .toggleHighContrast(value);
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Bedtime reminders'),
-              subtitle: Text(
-                state.schedule.mode == FilterMode.scheduled
-                    ? 'Get a reminder before your schedule starts'
-                    : 'Enable a schedule to use reminders',
-              ),
-              value: state.bedtimeReminderEnabled,
-              onChanged: (value) async {
-                if (value && state.schedule.mode != FilterMode.scheduled) {
-                  await _promptScheduleSetup(context);
-                  return;
-                }
-                ref
-                    .read(appStateProvider.notifier)
-                    .toggleBedtimeReminder(value);
-              },
-            ),
-            if (state.bedtimeReminderEnabled)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Reminder lead time',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    Text(
-                      'Notify this many minutes before the schedule starts.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    Slider(
-                      min: 0,
-                      max: 120,
-                      divisions: 8,
-                      value: state.bedtimeReminderMinutes.toDouble(),
-                      label: state.bedtimeReminderMinutes == 0
-                          ? 'At start'
-                          : '${state.bedtimeReminderMinutes} min',
-                      onChanged: (value) {
-                        ref
-                            .read(appStateProvider.notifier)
-                            .setBedtimeReminderLeadMinutes(value.round());
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            SwitchListTile(
-              title: const Text('Morning check-in reminder'),
-              subtitle: const Text('Daily prompt to log your sleep quality'),
-              value: state.sleepCheckInEnabled,
-              onChanged: (value) {
-                ref
-                    .read(appStateProvider.notifier)
-                    .toggleSleepCheckInReminder(value);
-              },
-            ),
-            if (state.sleepCheckInEnabled)
-              ListTile(
-                title: const Text('Check-in time'),
-                subtitle: Text(_formatTimeOfDay(state.sleepCheckInTime)),
-                trailing: const Icon(Icons.access_time),
-                onTap: () async {
-                  final result = await showTimePicker(
-                    context: context,
-                    initialTime: state.sleepCheckInTime,
-                  );
-                  if (!context.mounted || result == null) return;
-                  ref
-                      .read(appStateProvider.notifier)
-                      .setSleepCheckInTime(result);
-                },
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: _NotificationScheduleCard(state: state),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-                  Text(
-                    'Blue-light goal',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  Text(
-                    'Minutes of warm filter time before bed.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Slider(
-                    min: 30,
-                    max: 240,
-                    divisions: 7,
-                    value: state.blueLightGoalMinutes.toDouble(),
-                    label: _formatGoalMinutes(state.blueLightGoalMinutes),
-                    onChanged: (value) {
-                      ref
-                          .read(appStateProvider.notifier)
-                          .setBlueLightGoalMinutes(value.round());
-                    },
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final minutes in const [60, 90, 120, 150])
-                        OutlinedButton(
-                          onPressed: () {
-                            ref
-                                .read(appStateProvider.notifier)
-                                .setBlueLightGoalMinutes(minutes);
-                          },
-                          child: Text(_formatGoalMinutes(minutes)),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Screen-off goal',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  Text(
-                    'Default no-phone window before bed.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Slider(
-                    min: 15,
-                    max: 180,
-                    divisions: 11,
-                    value: state.screenOffGoalMinutes.toDouble(),
-                    label: _formatGoalMinutes(state.screenOffGoalMinutes),
-                    onChanged: (value) {
-                      ref
-                          .read(appStateProvider.notifier)
-                          .setScreenOffGoalMinutes(value.round());
-                    },
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final minutes in const [30, 60, 90])
-                        OutlinedButton(
-                          onPressed: () {
-                            ref
-                                .read(appStateProvider.notifier)
-                                .setScreenOffGoalMinutes(minutes);
-                          },
-                          child: Text(_formatGoalMinutes(minutes)),
-                        ),
-                    ],
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Screen-off notifications'),
-                    subtitle: const Text('Notify when the no-phone window starts/ends.'),
-                    value: state.screenOffNotificationsEnabled,
-                    onChanged: (value) {
-                      ref
-                          .read(appStateProvider.notifier)
-                          .toggleScreenOffNotifications(value);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Caffeine cutoff',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  Text(
-                    'Warn this many hours before bedtime.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Slider(
-                    min: 2,
-                    max: 12,
-                    divisions: 10,
-                    value: state.caffeineCutoffHours.toDouble(),
-                    label: '${state.caffeineCutoffHours}h',
-                    onChanged: (value) {
-                      ref
-                          .read(appStateProvider.notifier)
-                          .setCaffeineCutoffHours(value.round());
-                    },
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final hours in const [4, 6, 8])
-                        OutlinedButton(
-                          onPressed: () {
-                            ref
-                                .read(appStateProvider.notifier)
-                                .setCaffeineCutoffHours(hours);
-                          },
-                          child: Text('${hours}h'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Sleep goal',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  Text(
-                    'Set your nightly sleep target.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Slider(
-                    min: 240,
-                    max: 720,
-                    divisions: 16,
-                    value: state.sleepGoalMinutes.toDouble(),
-                    label: _formatGoalMinutes(state.sleepGoalMinutes),
-                    onChanged: (value) {
-                      ref
-                          .read(appStateProvider.notifier)
-                          .setSleepGoalMinutes(value.round());
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-                  Text(
-                    'Wind-down checklist',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  Text(
-                    'Customize the steps you want to complete each night.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  if (state.windDownItems.isEmpty)
-                    Text(
-                      'No items yet. Add your first step.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: _mutedColor(context)),
-                    )
-                  else
-                    ReorderableListView(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      onReorder: (oldIndex, newIndex) {
-                        ref
-                            .read(appStateProvider.notifier)
-                            .reorderWindDownItems(oldIndex, newIndex);
-                      },
-                      children: [
-                        for (final item in state.windDownItems)
-                          ListTile(
-                            key: ValueKey(item.id),
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(item.label),
-                            leading: const Icon(Icons.drag_handle),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              onPressed: () {
-                                ref
-                                    .read(appStateProvider.notifier)
-                                    .removeWindDownItem(item.id);
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () async {
-                        final label = await _showAddWindDownItemDialog(context);
-                        if (label == null || label.trim().isEmpty) return;
-                        await ref
-                            .read(appStateProvider.notifier)
-                            .addWindDownItem(label);
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add step'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              title: const Text('Bedtime mode preset'),
-              subtitle: const Text(
-                'Select the preset used when starting bedtime mode.',
-              ),
-              trailing: DropdownButton<String?>(
-                value: state.bedtimeModePresetId,
-                underline: const SizedBox.shrink(),
-                onChanged: (value) {
-                  if (value != null) {
-                    final preset = state.presets.firstWhere(
-                      (item) => item.id == value,
-                      orElse: () => state.activePreset,
-                    );
-                    if (preset.isPremium && !state.isPremium) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Premium preset - upgrade to unlock'),
-                        ),
-                      );
-                      return;
-                    }
-                  }
-                  ref
-                      .read(appStateProvider.notifier)
-                      .setBedtimeModePresetId(value);
-                },
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Use current preset'),
-                  ),
-                  ...state.presets.map((preset) {
-                    final label = preset.isPremium && !state.isPremium
-                        ? '${preset.name} (Premium)'
-                        : preset.name;
-                    return DropdownMenuItem<String?>(
-                      value: preset.id,
-                      enabled: state.isPremium || !preset.isPremium,
-                      child: Text(label),
-                    );
-                  }),
-                ],
-              ),
-            ),
-            if (!state.isPremium)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'Premium presets are locked for bedtime mode.',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: _mutedColor(context)),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _BedtimePresetPreview(state: state),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: _CustomPresetsSection(state: state),
-            ),
-            SwitchListTile(
-              title: const Text('Bedtime mode starts screen-off goal'),
-              subtitle: const Text('Begin the no-phone window automatically.'),
-              value: state.bedtimeModeStartScreenOff,
-              onChanged: (value) {
-                ref
-                    .read(appStateProvider.notifier)
-                    .toggleBedtimeModeStartScreenOff(value);
-              },
-            ),
-            ListTile(
-              title: const Text('Bedtime mode auto-off'),
-              subtitle: Text(
-                state.bedtimeModeAutoOffMinutes == 0
-                    ? 'Keep filter on until you turn it off'
-                    : 'Auto-off after ${_formatGoalMinutes(state.bedtimeModeAutoOffMinutes)}',
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Slider(
-                min: 0,
-                max: 180,
-                divisions: 12,
-                value: state.bedtimeModeAutoOffMinutes.toDouble(),
-                label: state.bedtimeModeAutoOffMinutes == 0
-                    ? 'Off'
-                    : _formatGoalMinutes(state.bedtimeModeAutoOffMinutes),
-                onChanged: (value) {
-                  ref
-                      .read(appStateProvider.notifier)
-                      .setBedtimeModeAutoOffMinutes(value.round());
-                },
-              ),
-            ),
-            SwitchListTile(
-              title: const Text('Sunset sync'),
-              subtitle: const Text('Use location-based sunset time for planning.'),
-              value: state.sunsetSyncEnabled,
-              onChanged: (value) {
-                ref.read(appStateProvider.notifier).toggleSunsetSync(value);
-              },
-            ),
-            _OverlayPermissionRow(),
-            _FlashlightToggle(state: state),
-            ListTile(
-              leading: const Icon(Icons.download_outlined),
-              title: const Text('Export sleep journal (CSV)'),
-              subtitle: const Text('Share your sleep logs'),
-              onTap: () => _exportSleepJournalCsv(context, state),
-            ),
-            ListTile(
-              leading: const Icon(Icons.bedtime_outlined),
-              title: const Text('Clear sleep journal'),
-              subtitle: const Text('Remove all logged sleep entries'),
-              onTap: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Clear sleep journal'),
-                    content: const Text(
-                      'This will remove all saved sleep journal entries.',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('Cancel'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
-                        child: const Text('Clear'),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirmed == true) {
-                  await ref.read(appStateProvider.notifier).clearSleepJournal();
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Sleep journal cleared')),
-                  );
-                }
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.star_border),
-              title: const Text('Rate this app'),
-              onTap: () {
-                _launchUrl(
-                  'market://details?id=$kAndroidPackageId',
-                  context,
-                  fallback:
-                      'https://play.google.com/store/apps/details?id=$kAndroidPackageId',
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.privacy_tip_outlined),
-              title: const Text('Privacy Policy'),
-              onTap: () => _handleLegalTap(
+            Text(
+              'Set things up once',
+              style: Theme.of(
                 context,
-                url: kPrivacyPolicyUrl,
-                fallbackTitle: 'Privacy Policy',
-                fallbackBody:
-                    'NightBuddy stores your preferences (presets, schedule, premium flag) locally on your device only. No personal data is sent to our servers. '
-                    'Ads and in-app purchases may collect diagnostics per their respective SDK policies. You can clear app data to reset stored preferences.',
-              ),
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
-            ListTile(
-              leading: const Icon(Icons.article_outlined),
-              title: const Text('Terms of Service'),
-              onTap: () => _handleLegalTap(
+            const SizedBox(height: 6),
+            Text(
+              'Choose your bedtime defaults, reminders, device options, and account settings here.',
+              style: Theme.of(
                 context,
-                url: kTermsOfServiceUrl,
-                fallbackTitle: 'Terms of Service',
-                fallbackBody:
-                    'Use NightBuddy at your own discretion. The app provides a screen tint overlay to reduce blue light. We do not guarantee medical outcomes. '
-                    'By using the app, you agree not to misuse overlays (e.g., to obscure critical system dialogs) and to comply with Play Store policies. '
-                    'Premium unlock is non-transferable and subject to Play Store billing terms.',
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'NightBuddy reduces blue light by tinting your screen with a warm overlay. '
-                'Use it at night to help your eyes relax.',
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(left: 16, bottom: 24),
-              child: Text('Version 0.1.0'),
+              ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
             ),
           ],
         ),
       ),
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (error, _) => Scaffold(body: Center(child: Text('Error: $error'))),
+    );
+  }
+}
+
+class _SettingsHome extends StatelessWidget {
+  const _SettingsHome({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          Card(
+            child: ListTile(
+              leading: Icon(
+                state.isPremium
+                    ? Icons.workspace_premium_outlined
+                    : Icons.star_outline,
+              ),
+              title: Text(state.isPremium ? 'Premium unlocked' : 'Premium'),
+              subtitle: Text(
+                state.isPremium
+                    ? 'View your premium access and included features.'
+                    : 'Unlock unlimited custom presets, deeper insights, and more audio.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PremiumScreen()),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          const _SettingsIntroCard(),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.bedtime_outlined),
+              title: const Text('Usual night defaults'),
+              subtitle: const Text(
+                'Choose the preset, track, timer, and phone-down setup you want to reuse.',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const UsualNightSetupScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          const _SettingsSectionTile(
+            icon: Icons.auto_awesome_outlined,
+            title: 'Display & goals',
+            subtitle:
+                'Filter shortcuts, high-contrast mode, and your night goals.',
+            destination: _DisplayGoalsSettingsScreen(),
+          ),
+          const SizedBox(height: 8),
+          const _SettingsSectionTile(
+            icon: Icons.notifications_active_outlined,
+            title: 'Night prompts',
+            subtitle:
+                'Bedtime reminders, morning check-in prompts, and notification timing.',
+            destination: _NightPromptsSettingsScreen(),
+          ),
+          const SizedBox(height: 8),
+          const _SettingsSectionTile(
+            icon: Icons.bedtime_outlined,
+            title: 'Routine & bedtime',
+            subtitle:
+                'Wind-down routine steps, bedtime automation, presets, and sunset sync.',
+            destination: _RoutineBedtimeSettingsScreen(),
+          ),
+          const SizedBox(height: 8),
+          const _SettingsSectionTile(
+            icon: Icons.privacy_tip_outlined,
+            title: 'Device & privacy',
+            subtitle:
+                'Overlay/device controls, export/clear data, legal pages, and app info.',
+            destination: _DevicePrivacySettingsScreen(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsSectionTile extends StatelessWidget {
+  const _SettingsSectionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.destination,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget destination;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => destination));
+        },
+      ),
+    );
+  }
+}
+
+class _DisplayGoalsSettingsScreen extends ConsumerWidget {
+  const _DisplayGoalsSettingsScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appStateProvider).valueOrNull ?? AppState.initial();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Display & goals')),
+      body: ListView(
+        children: [
+          const _SettingsPageIntro(
+            title: 'Display & goals',
+            subtitle:
+                'Tune quick-access behavior and decide what the app should help you optimize before bed.',
+          ),
+          SwitchListTile(
+            title: const Text('Show notification shortcut'),
+            subtitle: const Text('Quick toggle to disable or enable filter'),
+            value: state.notificationShortcutEnabled,
+            onChanged: (value) {
+              ref
+                  .read(appStateProvider.notifier)
+                  .toggleNotificationShortcut(value);
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Start on boot reminder'),
+            subtitle: const Text(
+              'Show reminder to enable overlay after reboot',
+            ),
+            value: state.startOnBootReminder,
+            onChanged: (value) {
+              ref
+                  .read(appStateProvider.notifier)
+                  .toggleStartOnBootReminder(value);
+            },
+          ),
+          SwitchListTile(
+            title: const Text('High contrast mode'),
+            subtitle: const Text('Boost contrast for low-light readability.'),
+            value: state.highContrastEnabled,
+            onChanged: (value) {
+              ref.read(appStateProvider.notifier).toggleHighContrast(value);
+            },
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Text(
+                  'Blue-light goal',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  'Minutes of warm filter time before bed.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Slider(
+                  min: 30,
+                  max: 240,
+                  divisions: 7,
+                  value: state.blueLightGoalMinutes.toDouble(),
+                  label: _formatGoalMinutes(state.blueLightGoalMinutes),
+                  onChanged: (value) {
+                    ref
+                        .read(appStateProvider.notifier)
+                        .setBlueLightGoalMinutes(value.round());
+                  },
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final minutes in const [60, 90, 120, 150])
+                      OutlinedButton(
+                        onPressed: () {
+                          ref
+                              .read(appStateProvider.notifier)
+                              .setBlueLightGoalMinutes(minutes);
+                        },
+                        child: Text(_formatGoalMinutes(minutes)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Screen-off goal',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  'Default no-phone window before bed.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Slider(
+                  min: 15,
+                  max: 180,
+                  divisions: 11,
+                  value: state.screenOffGoalMinutes.toDouble(),
+                  label: _formatGoalMinutes(state.screenOffGoalMinutes),
+                  onChanged: (value) {
+                    ref
+                        .read(appStateProvider.notifier)
+                        .setScreenOffGoalMinutes(value.round());
+                  },
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final minutes in const [30, 60, 90])
+                      OutlinedButton(
+                        onPressed: () {
+                          ref
+                              .read(appStateProvider.notifier)
+                              .setScreenOffGoalMinutes(minutes);
+                        },
+                        child: Text(_formatGoalMinutes(minutes)),
+                      ),
+                  ],
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Screen-off notifications'),
+                  subtitle: const Text(
+                    'Notify when the no-phone window starts/ends.',
+                  ),
+                  value: state.screenOffNotificationsEnabled,
+                  onChanged: (value) {
+                    ref
+                        .read(appStateProvider.notifier)
+                        .toggleScreenOffNotifications(value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Caffeine cutoff',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  'Warn this many hours before bedtime.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Slider(
+                  min: 2,
+                  max: 12,
+                  divisions: 10,
+                  value: state.caffeineCutoffHours.toDouble(),
+                  label: '${state.caffeineCutoffHours}h',
+                  onChanged: (value) {
+                    ref
+                        .read(appStateProvider.notifier)
+                        .setCaffeineCutoffHours(value.round());
+                  },
+                ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final hours in const [4, 6, 8])
+                      OutlinedButton(
+                        onPressed: () {
+                          ref
+                              .read(appStateProvider.notifier)
+                              .setCaffeineCutoffHours(hours);
+                        },
+                        child: Text('${hours}h'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Sleep goal',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  'Set your nightly sleep target.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Slider(
+                  min: 240,
+                  max: 720,
+                  divisions: 16,
+                  value: state.sleepGoalMinutes.toDouble(),
+                  label: _formatGoalMinutes(state.sleepGoalMinutes),
+                  onChanged: (value) {
+                    ref
+                        .read(appStateProvider.notifier)
+                        .setSleepGoalMinutes(value.round());
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NightPromptsSettingsScreen extends ConsumerWidget {
+  const _NightPromptsSettingsScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appStateProvider).valueOrNull ?? AppState.initial();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Night prompts')),
+      body: ListView(
+        children: [
+          const _SettingsPageIntro(
+            title: 'Night prompts',
+            subtitle:
+                'Control when NightBuddy nudges you before bed and when it checks in the next morning.',
+          ),
+          SwitchListTile(
+            title: const Text('Bedtime reminders'),
+            subtitle: Text(
+              state.schedule.mode == FilterMode.scheduled
+                  ? 'Get a reminder before your schedule starts'
+                  : 'Enable a schedule to use reminders',
+            ),
+            value: state.bedtimeReminderEnabled,
+            onChanged: (value) async {
+              if (value && state.schedule.mode != FilterMode.scheduled) {
+                await _promptScheduleSetup(context);
+                return;
+              }
+              ref.read(appStateProvider.notifier).toggleBedtimeReminder(value);
+            },
+          ),
+          if (state.bedtimeReminderEnabled)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Reminder lead time',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  Text(
+                    'Notify this many minutes before the schedule starts.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  Slider(
+                    min: 0,
+                    max: 120,
+                    divisions: 8,
+                    value: state.bedtimeReminderMinutes.toDouble(),
+                    label: state.bedtimeReminderMinutes == 0
+                        ? 'At start'
+                        : '${state.bedtimeReminderMinutes} min',
+                    onChanged: (value) {
+                      ref
+                          .read(appStateProvider.notifier)
+                          .setBedtimeReminderLeadMinutes(value.round());
+                    },
+                  ),
+                ],
+              ),
+            ),
+          SwitchListTile(
+            title: const Text('Morning check-in reminder'),
+            subtitle: const Text('Daily prompt to log your sleep quality'),
+            value: state.sleepCheckInEnabled,
+            onChanged: (value) {
+              ref
+                  .read(appStateProvider.notifier)
+                  .toggleSleepCheckInReminder(value);
+            },
+          ),
+          if (state.sleepCheckInEnabled)
+            ListTile(
+              title: const Text('Check-in time'),
+              subtitle: Text(_formatTimeOfDay(state.sleepCheckInTime)),
+              trailing: const Icon(Icons.access_time),
+              onTap: () async {
+                final result = await showTimePicker(
+                  context: context,
+                  initialTime: state.sleepCheckInTime,
+                );
+                if (!context.mounted || result == null) return;
+                ref.read(appStateProvider.notifier).setSleepCheckInTime(result);
+              },
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: _NotificationScheduleCard(state: state),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoutineBedtimeSettingsScreen extends ConsumerWidget {
+  const _RoutineBedtimeSettingsScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appStateProvider).valueOrNull ?? AppState.initial();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Routine & bedtime')),
+      body: ListView(
+        children: [
+          const _SettingsPageIntro(
+            title: 'Routine & bedtime',
+            subtitle:
+                'Set your wind-down steps, bedtime preset, and night automation here.',
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Text(
+                  'Wind-down checklist',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  'Customize the steps you want to complete each night.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                if (state.windDownItems.isEmpty)
+                  Text(
+                    'No items yet. Add your first step.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
+                  )
+                else
+                  ReorderableListView(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    onReorder: (oldIndex, newIndex) {
+                      ref
+                          .read(appStateProvider.notifier)
+                          .reorderWindDownItems(oldIndex, newIndex);
+                    },
+                    children: [
+                      for (final item in state.windDownItems)
+                        ListTile(
+                          key: ValueKey(item.id),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(item.label),
+                          leading: const Icon(Icons.drag_handle),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () {
+                              ref
+                                  .read(appStateProvider.notifier)
+                                  .removeWindDownItem(item.id);
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      final label = await _showAddWindDownItemDialog(context);
+                      if (label == null || label.trim().isEmpty) return;
+                      await ref.read(appStateProvider.notifier).addWindDownItem(
+                        label,
+                      );
+                    },
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add step'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Bedtime mode preset'),
+            subtitle: const Text(
+              'Select the preset used when starting bedtime mode.',
+            ),
+            trailing: DropdownButton<String?>(
+              value: state.bedtimeModePresetId,
+              underline: const SizedBox.shrink(),
+              onChanged: (value) {
+                if (value != null) {
+                  final preset = state.presets.firstWhere(
+                    (item) => item.id == value,
+                    orElse: () => state.activePreset,
+                  );
+                  if (preset.isPremium && !state.isPremium) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('This preset is part of Premium.'),
+                      ),
+                    );
+                    return;
+                  }
+                }
+                ref
+                    .read(appStateProvider.notifier)
+                    .setBedtimeModePresetId(value);
+              },
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Use current preset'),
+                ),
+                ...state.presets.map((preset) {
+                  final label = preset.isPremium && !state.isPremium
+                      ? '${preset.name} (Premium)'
+                      : preset.name;
+                  return DropdownMenuItem<String?>(
+                    value: preset.id,
+                    enabled: state.isPremium || !preset.isPremium,
+                    child: Text(label),
+                  );
+                }),
+              ],
+            ),
+          ),
+          if (!state.isPremium)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Premium presets are locked for bedtime mode.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _BedtimePresetPreview(state: state),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: _CustomPresetsSection(state: state),
+          ),
+          SwitchListTile(
+            title: const Text('Bedtime mode starts screen-off goal'),
+            subtitle: const Text('Begin the no-phone window automatically.'),
+            value: state.bedtimeModeStartScreenOff,
+            onChanged: (value) {
+              ref
+                  .read(appStateProvider.notifier)
+                  .toggleBedtimeModeStartScreenOff(value);
+            },
+          ),
+          ListTile(
+            title: const Text('Bedtime mode auto-off'),
+            subtitle: Text(
+              state.bedtimeModeAutoOffMinutes == 0
+                  ? 'Keep filter on until you turn it off'
+                  : 'Auto-off after ${_formatGoalMinutes(state.bedtimeModeAutoOffMinutes)}',
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Slider(
+              min: 0,
+              max: 180,
+              divisions: 12,
+              value: state.bedtimeModeAutoOffMinutes.toDouble(),
+              label: state.bedtimeModeAutoOffMinutes == 0
+                  ? 'Off'
+                  : _formatGoalMinutes(state.bedtimeModeAutoOffMinutes),
+              onChanged: (value) {
+                ref
+                    .read(appStateProvider.notifier)
+                    .setBedtimeModeAutoOffMinutes(value.round());
+              },
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Sunset sync'),
+            subtitle: const Text('Use location-based sunset time for planning.'),
+            value: state.sunsetSyncEnabled,
+            onChanged: (value) {
+              ref.read(appStateProvider.notifier).toggleSunsetSync(value);
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              _sunsetPreviewLabel(state),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DevicePrivacySettingsScreen extends ConsumerWidget {
+  const _DevicePrivacySettingsScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appStateProvider).valueOrNull ?? AppState.initial();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Device & privacy')),
+      body: ListView(
+        children: [
+          const _SettingsPageIntro(
+            title: 'Device & privacy',
+            subtitle:
+                'Manage device behavior, exported data, privacy details, and app information.',
+          ),
+          _OverlayPermissionRow(),
+          _FlashlightToggle(state: state),
+          if (kDebugMode)
+            SwitchListTile(
+              title: const Text('Show debug tools'),
+              subtitle: const Text(
+                'Reveal developer-facing diagnostics like the overlay debug card.',
+              ),
+              value: state.showDebugTools,
+              onChanged: (value) {
+                ref.read(appStateProvider.notifier).toggleShowDebugTools(value);
+              },
+            ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text('Export sleep journal (CSV)'),
+            subtitle: const Text('Share your sleep logs'),
+            onTap: () {
+              if (!state.isPremium) {
+                _promptPremium(context);
+                return;
+              }
+              _exportSleepJournalCsv(context, state);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.bedtime_outlined),
+            title: const Text('Clear sleep journal'),
+            subtitle: const Text('Remove all logged sleep entries'),
+            onTap: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Clear sleep journal'),
+                  content: const Text(
+                    'This will remove all saved sleep journal entries.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text('Clear'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await ref.read(appStateProvider.notifier).clearSleepJournal();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Sleep journal cleared')),
+                );
+              }
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.star_border),
+            title: const Text('Rate this app'),
+            onTap: () {
+              _launchUrl(
+                'market://details?id=$kAndroidPackageId',
+                context,
+                fallback:
+                    'https://play.google.com/store/apps/details?id=$kAndroidPackageId',
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('Privacy Policy'),
+            onTap: () => _handleLegalTap(
+              context,
+              url: kPrivacyPolicyUrl,
+              fallbackTitle: 'Privacy Policy',
+              fallbackBody:
+                  'NightBuddy stores your preferences (presets, schedule, premium flag) locally on your device only. No personal data is sent to our servers. '
+                  'Ads and in-app purchases may collect diagnostics per their respective SDK policies. You can clear app data to reset stored preferences.',
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.article_outlined),
+            title: const Text('Terms of Service'),
+            onTap: () => _handleLegalTap(
+              context,
+              url: kTermsOfServiceUrl,
+              fallbackTitle: 'Terms of Service',
+              fallbackBody:
+                  'Use NightBuddy at your own discretion. The app provides a screen tint overlay to reduce blue light. We do not guarantee medical outcomes. '
+                  'By using the app, you agree not to misuse overlays (e.g., to obscure critical system dialogs) and to comply with Play Store policies. '
+                  'Premium unlock is non-transferable and subject to Play Store billing terms.',
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'NightBuddy reduces blue light by tinting your screen with a warm overlay. '
+              'Use it at night to help your eyes relax.',
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(left: 16, bottom: 24),
+            child: Text('Version 2.0.0'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsPageIntro extends StatelessWidget {
+  const _SettingsPageIntro({
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -572,8 +861,63 @@ String _formatTimeOfDay(TimeOfDay time) {
   return '$hour:$minute $period';
 }
 
+String _formatTimestamp(DateTime time) {
+  final local = time.toLocal();
+  final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final period = local.hour >= 12 ? 'PM' : 'AM';
+  return '${local.month}/${local.day} $hour:$minute $period';
+}
+
 Color _mutedColor(BuildContext context) {
   return Theme.of(context).colorScheme.onSurfaceVariant;
+}
+
+String _sunsetPreviewLabel(AppState state) {
+  final now = DateTime.now();
+  final fallback = _approxSunsetTime(now);
+  final sunset = state.sunsetTime ?? fallback;
+  final timeLabel = _formatTimeOfDay(sunset);
+  if (!state.sunsetSyncEnabled) {
+    return 'Enable to use your local sunset. Tonight ~ $timeLabel.';
+  }
+  if (state.sunsetTime == null) {
+    return 'Fetching sunset time... Using approx $timeLabel for now.';
+  }
+  if (state.sunsetUpdatedAt != null) {
+    return 'Tonight: $timeLabel (updated ${_formatTimestamp(state.sunsetUpdatedAt!)})';
+  }
+  return 'Tonight: $timeLabel';
+}
+
+TimeOfDay _approxSunsetTime(DateTime now) {
+  switch (now.month) {
+    case 12:
+    case 1:
+      return const TimeOfDay(hour: 17, minute: 0);
+    case 2:
+      return const TimeOfDay(hour: 17, minute: 30);
+    case 3:
+      return const TimeOfDay(hour: 18, minute: 15);
+    case 4:
+      return const TimeOfDay(hour: 19, minute: 0);
+    case 5:
+      return const TimeOfDay(hour: 20, minute: 0);
+    case 6:
+      return const TimeOfDay(hour: 20, minute: 30);
+    case 7:
+      return const TimeOfDay(hour: 20, minute: 15);
+    case 8:
+      return const TimeOfDay(hour: 19, minute: 45);
+    case 9:
+      return const TimeOfDay(hour: 19, minute: 0);
+    case 10:
+      return const TimeOfDay(hour: 18, minute: 15);
+    case 11:
+      return const TimeOfDay(hour: 17, minute: 30);
+    default:
+      return const TimeOfDay(hour: 18, minute: 30);
+  }
 }
 
 Future<void> _promptScheduleSetup(BuildContext context) async {
@@ -597,13 +941,20 @@ Future<void> _promptScheduleSetup(BuildContext context) async {
     ),
   );
   if (shouldOpen == true && context.mounted) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ScheduleScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ScheduleScreen()));
   }
 }
 
-Future<String?> _showAddWindDownItemDialog(BuildContext context) async {        
+void _promptPremium(BuildContext context) {
+  showPremiumLockedSnackBar(context, featureName: 'This feature');
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => const PremiumScreen()));
+}
+
+Future<String?> _showAddWindDownItemDialog(BuildContext context) async {
   final controller = TextEditingController();
   return showDialog<String>(
     context: context,
@@ -662,10 +1013,7 @@ Future<String?> _showCustomPresetNameDialog(
   );
 }
 
-Future<bool?> _confirmDeletePreset(
-  BuildContext context,
-  String name,
-) {
+Future<bool?> _confirmDeletePreset(BuildContext context, String name) {
   return showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -685,11 +1033,14 @@ Future<bool?> _confirmDeletePreset(
   );
 }
 
-Future<void> _exportSleepJournalCsv(BuildContext context, AppState state) async {
+Future<void> _exportSleepJournalCsv(
+  BuildContext context,
+  AppState state,
+) async {
   if (state.sleepJournalEntries.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No sleep entries to export')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('No sleep entries to export')));
     return;
   }
   final buffer = StringBuffer('started_at,ended_at,quality,notes\n');
@@ -707,10 +1058,9 @@ Future<void> _exportSleepJournalCsv(BuildContext context, AppState state) async 
   final directory = await getTemporaryDirectory();
   final file = File('${directory.path}/nightbuddy_sleep_journal.csv');
   await file.writeAsString(buffer.toString());
-  await Share.shareXFiles(
-    [XFile(file.path)],
-    subject: 'NightBuddy sleep journal',
-  );
+  await Share.shareXFiles([
+    XFile(file.path),
+  ], subject: 'NightBuddy sleep journal');
 }
 
 String _csvEscape(String value) {
@@ -731,8 +1081,11 @@ Future<void> _handleLegalTap(
   _showLegal(context, title: fallbackTitle, body: fallbackBody);
 }
 
-Future<void> _launchUrl(String url, BuildContext context,
-    {String? fallback}) async {
+Future<void> _launchUrl(
+  String url,
+  BuildContext context, {
+  String? fallback,
+}) async {
   final can = await canLaunchUrlString(url);
   if (can) {
     await launchUrlString(url, mode: LaunchMode.externalApplication);
@@ -743,61 +1096,40 @@ Future<void> _launchUrl(String url, BuildContext context,
     return;
   }
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Unable to open link')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Unable to open link')));
   }
 }
 
-void _showLegal(BuildContext context,
-    {required String title, required String body}) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Theme.of(context).cardColor,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-      ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(ctx).textTheme.titleMedium,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Text(
-                  body,
-                  style: Theme.of(ctx).textTheme.bodyMedium,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+void _showLegal(
+  BuildContext context, {
+  required String title,
+  required String body,
+}) {
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => _LegalScreen(title: title, body: body),
     ),
   );
+}
+
+class _LegalScreen extends StatelessWidget {
+  const _LegalScreen({required this.title, required this.body});
+
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Text(body, style: Theme.of(context).textTheme.bodyMedium),
+      ),
+    );
+  }
 }
 
 class _OverlayPermissionRow extends ConsumerWidget {
@@ -899,8 +1231,9 @@ class _FlashlightToggle extends ConsumerWidget {
                 if (!ok && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content:
-                          Text('Flashlight unavailable or permission denied'),
+                      content: Text(
+                        'Flashlight unavailable or permission denied',
+                      ),
                     ),
                   );
                 }
@@ -932,39 +1265,16 @@ class _BedtimePresetPreview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Preset preview',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        Text('Preset preview', style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 8),
-        AspectRatio(
-          aspectRatio: 2.2,
-          child: Stack(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white10),
-                ),
-              ),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: FilterPreviewOverlay(
-                  preset: preset,
-                  active: true,
-                ),
-              ),
-              Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    preset.name,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-              ),
-            ],
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: FilterPhonePreview(
+              preset: preset,
+              active: true,
+              label: preset.name,
+            ),
           ),
         ),
       ],
@@ -979,9 +1289,13 @@ class _CustomPresetsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final customPresets =
-        state.presets.where((preset) => preset.isCustom).toList();
+    final customPresets = state.presets
+        .where((preset) => preset.isCustom)
+        .toList();
     final nextName = 'Custom ${customPresets.length + 1}';
+    final canAdd =
+        state.isPremium || customPresets.length < kFreeCustomPresetLimit;
+    final remaining = kFreeCustomPresetLimit - customPresets.length;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -994,20 +1308,30 @@ class _CustomPresetsSection extends ConsumerWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Save and manage multiple custom filters.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: _mutedColor(context)),
+              'Save your own filter looks for repeat nights.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
             ),
+            if (!state.isPremium)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  remaining > 0
+                      ? 'Free: $customPresets.length / $kFreeCustomPresetLimit custom presets used.'
+                      : 'Free limit reached. Premium unlocks unlimited custom presets.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
+                ),
+              ),
             const SizedBox(height: 8),
             if (customPresets.isEmpty)
               Text(
                 'No custom presets yet.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: _mutedColor(context)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
               )
             else
               Column(
@@ -1044,14 +1368,8 @@ class _CustomPresetsSection extends ConsumerWidget {
                           }
                         },
                         itemBuilder: (ctx) => const [
-                          PopupMenuItem(
-                            value: 'rename',
-                            child: Text('Rename'),
-                          ),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
-                          ),
+                          PopupMenuItem(value: 'rename', child: Text('Rename')),
+                          PopupMenuItem(value: 'delete', child: Text('Delete')),
                         ],
                       ),
                       onTap: () async {
@@ -1066,15 +1384,25 @@ class _CustomPresetsSection extends ConsumerWidget {
               alignment: Alignment.centerRight,
               child: TextButton.icon(
                 onPressed: () async {
+                  if (!canAdd) {
+                    _promptPremium(context);
+                    return;
+                  }
                   final name = await _showCustomPresetNameDialog(
                     context,
                     initialValue: nextName,
                   );
                   if (name == null) return;
-                  await ref.read(appStateProvider.notifier).addCustomPreset(
+                  if (name.trim().isEmpty) return;
+                  final ok = await ref
+                      .read(appStateProvider.notifier)
+                      .addCustomPreset(
                         name: name,
                         basePreset: state.activePreset,
                       );
+                  if (!ok && context.mounted) {
+                    _promptPremium(context);
+                  }
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('Add custom preset'),
@@ -1096,7 +1424,8 @@ class _NotificationScheduleCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
     final bedtimeEnabled =
-        state.bedtimeReminderEnabled && state.schedule.mode == FilterMode.scheduled;
+        state.bedtimeReminderEnabled &&
+        state.schedule.mode == FilterMode.scheduled;
     final nextBedtime = _nextBedtimeReminder(
       state.schedule,
       state.bedtimeReminderMinutes,
@@ -1104,11 +1433,11 @@ class _NotificationScheduleCard extends ConsumerWidget {
     );
     final bedtimeLabel = bedtimeEnabled
         ? (nextBedtime != null
-            ? 'Next: ${_formatDateTime(nextBedtime)}'
-            : 'No upcoming reminder')
+              ? 'Next: ${_formatDateTime(nextBedtime)}'
+              : 'No upcoming reminder')
         : (state.schedule.mode != FilterMode.scheduled
-            ? 'Enable a schedule to use reminders'
-            : 'Off');
+              ? 'Enable a schedule to use reminders'
+              : 'Off');
 
     final checkInEnabled = state.sleepCheckInEnabled;
     final nextCheckIn = _nextTimeOfDay(state.sleepCheckInTime, now);
@@ -1119,16 +1448,16 @@ class _NotificationScheduleCard extends ConsumerWidget {
     final screenOffEnabled = state.screenOffNotificationsEnabled;
     final screenOffLabel = screenOffEnabled
         ? (state.screenOffUntil != null && state.screenOffUntil!.isAfter(now)
-            ? 'Active until ${_formatDateTime(state.screenOffUntil!)}'
-            : 'On when you start a screen-off goal')
+              ? 'Active until ${_formatDateTime(state.screenOffUntil!)}'
+              : 'On when you start a screen-off goal')
         : 'Off';
 
     Future<void> sendPreview(NotificationPreview type, String label) async {
       await ref.read(bedtimeReminderServiceProvider).showPreview(type);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$label sent')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$label sent')));
     }
 
     return Card(
@@ -1139,10 +1468,9 @@ class _NotificationScheduleCard extends ConsumerWidget {
             title: const Text('Notification schedule'),
             subtitle: Text(
               'See what is coming next.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: _mutedColor(context)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: _mutedColor(context)),
             ),
           ),
           const Divider(height: 1),
@@ -1152,9 +1480,9 @@ class _NotificationScheduleCard extends ConsumerWidget {
             trailing: TextButton(
               onPressed: bedtimeEnabled
                   ? () => sendPreview(
-                        NotificationPreview.bedtime,
-                        'Bedtime preview',
-                      )
+                      NotificationPreview.bedtime,
+                      'Bedtime preview',
+                    )
                   : null,
               child: const Text('Preview'),
             ),
@@ -1165,9 +1493,9 @@ class _NotificationScheduleCard extends ConsumerWidget {
             trailing: TextButton(
               onPressed: checkInEnabled
                   ? () => sendPreview(
-                        NotificationPreview.checkIn,
-                        'Check-in preview',
-                      )
+                      NotificationPreview.checkIn,
+                      'Check-in preview',
+                    )
                   : null,
               child: const Text('Preview'),
             ),
@@ -1178,9 +1506,9 @@ class _NotificationScheduleCard extends ConsumerWidget {
             trailing: TextButton(
               onPressed: screenOffEnabled
                   ? () => sendPreview(
-                        NotificationPreview.screenOff,
-                        'Screen-off preview',
-                      )
+                      NotificationPreview.screenOff,
+                      'Screen-off preview',
+                    )
                   : null,
               child: const Text('Preview'),
             ),
@@ -1224,8 +1552,13 @@ DateTime? _nextBedtimeReminder(
 }
 
 DateTime _nextTimeOfDay(TimeOfDay time, DateTime now) {
-  var candidate =
-      DateTime(now.year, now.month, now.day, time.hour, time.minute);
+  var candidate = DateTime(
+    now.year,
+    now.month,
+    now.day,
+    time.hour,
+    time.minute,
+  );
   if (!candidate.isAfter(now)) {
     candidate = candidate.add(const Duration(days: 1));
   }
@@ -1233,15 +1566,7 @@ DateTime _nextTimeOfDay(TimeOfDay time, DateTime now) {
 }
 
 String _formatDateTime(DateTime time) {
-  const weekdays = [
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ];
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   final weekday = weekdays[time.weekday - 1];
   final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
   final minute = time.minute.toString().padLeft(2, '0');

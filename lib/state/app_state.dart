@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/filter_models.dart';
+import '../models/mind_unload_entry.dart';
 import '../models/sleep_journal.dart';
 
 class AppState {
@@ -9,6 +10,7 @@ class AppState {
   const AppState({
     required this.presets,
     required this.activePresetId,
+    required this.favoritePresetId,
     required this.schedule,
     required this.isPremium,
     required this.filterEnabled,
@@ -16,6 +18,9 @@ class AppState {
     required this.snoozeUntil,
     required this.sleepJournalActiveStart,
     required this.sleepJournalEntries,
+    required this.mindUnloadEntries,
+    required this.environmentChecklistDate,
+    required this.environmentChecklist,
     required this.sleepGoalMinutes,
     required this.windDownChecklistDate,
     required this.windDownChecklist,
@@ -31,6 +36,8 @@ class AppState {
     required this.blueLightGoalMinutes,
     required this.screenOffGoalMinutes,
     required this.bedtimeModePresetId,
+    required this.favoriteSleepTrackId,
+    required this.preferredSleepTimerMinutes,
     required this.bedtimeModeStartScreenOff,
     required this.bedtimeModeAutoOffMinutes,
     required this.bedtimeModeAutoOffUntil,
@@ -38,12 +45,19 @@ class AppState {
     required this.sunsetTime,
     required this.sunsetUpdatedAt,
     required this.screenOffNotificationsEnabled,
+    required this.remindersSnoozedUntil,
+    required this.windDownCompletedDates,
     required this.windDownItems,
     required this.highContrastEnabled,
+    required this.showDebugTools,
+    required this.reviewPromptPending,
+    required this.reviewPromptCount,
+    required this.reviewPromptedAt,
   });
 
   final List<FilterPreset> presets;
   final String activePresetId;
+  final String? favoritePresetId;
   final ScheduleConfig schedule;
   final bool isPremium;
   final bool filterEnabled;
@@ -51,6 +65,9 @@ class AppState {
   final DateTime? snoozeUntil;
   final DateTime? sleepJournalActiveStart;
   final List<SleepJournalEntry> sleepJournalEntries;
+  final List<MindUnloadEntry> mindUnloadEntries;
+  final DateTime? environmentChecklistDate;
+  final Map<String, bool> environmentChecklist;
   final int sleepGoalMinutes;
   final DateTime? windDownChecklistDate;
   final Map<String, bool> windDownChecklist;
@@ -66,6 +83,8 @@ class AppState {
   final int blueLightGoalMinutes;
   final int screenOffGoalMinutes;
   final String? bedtimeModePresetId;
+  final String? favoriteSleepTrackId;
+  final int preferredSleepTimerMinutes;
   final bool bedtimeModeStartScreenOff;
   final int bedtimeModeAutoOffMinutes;
   final DateTime? bedtimeModeAutoOffUntil;
@@ -73,8 +92,14 @@ class AppState {
   final TimeOfDay? sunsetTime;
   final DateTime? sunsetUpdatedAt;
   final bool screenOffNotificationsEnabled;
+  final DateTime? remindersSnoozedUntil;
+  final List<String> windDownCompletedDates;
   final List<WindDownItem> windDownItems;
   final bool highContrastEnabled;
+  final bool showDebugTools;
+  final bool reviewPromptPending;
+  final int reviewPromptCount;
+  final DateTime? reviewPromptedAt;
 
   FilterPreset get activePreset => presets.firstWhere(
     (p) => p.id == activePresetId,
@@ -114,9 +139,25 @@ class AppState {
     return windDownChecklist;
   }
 
+  bool isEnvironmentChecklistCurrent(DateTime now) {
+    final date = environmentChecklistDate;
+    if (date == null) return false;
+    return _isSameDay(date, now);
+  }
+
+  Map<String, bool> environmentChecklistFor(DateTime now) {
+    if (!isEnvironmentChecklistCurrent(now)) return const {};
+    return environmentChecklist;
+  }
+
+  bool isReminderSnoozed(DateTime now) {
+    return remindersSnoozedUntil != null && now.isBefore(remindersSnoozedUntil!);
+  }
+
   AppState copyWith({
     List<FilterPreset>? presets,
     String? activePresetId,
+    Object? favoritePresetId = _unset,
     ScheduleConfig? schedule,
     bool? isPremium,
     bool? filterEnabled,
@@ -124,6 +165,9 @@ class AppState {
     Object? snoozeUntil = _unset,
     Object? sleepJournalActiveStart = _unset,
     List<SleepJournalEntry>? sleepJournalEntries,
+    List<MindUnloadEntry>? mindUnloadEntries,
+    Object? environmentChecklistDate = _unset,
+    Map<String, bool>? environmentChecklist,
     int? sleepGoalMinutes,
     Object? windDownChecklistDate = _unset,
     Map<String, bool>? windDownChecklist,
@@ -139,6 +183,8 @@ class AppState {
     int? blueLightGoalMinutes,
     int? screenOffGoalMinutes,
     Object? bedtimeModePresetId = _unset,
+    Object? favoriteSleepTrackId = _unset,
+    int? preferredSleepTimerMinutes,
     bool? bedtimeModeStartScreenOff,
     int? bedtimeModeAutoOffMinutes,
     Object? bedtimeModeAutoOffUntil = _unset,
@@ -146,12 +192,21 @@ class AppState {
     Object? sunsetTime = _unset,
     Object? sunsetUpdatedAt = _unset,
     bool? screenOffNotificationsEnabled,
+    Object? remindersSnoozedUntil = _unset,
+    List<String>? windDownCompletedDates,
     List<WindDownItem>? windDownItems,
     bool? highContrastEnabled,
+    bool? showDebugTools,
+    bool? reviewPromptPending,
+    int? reviewPromptCount,
+    Object? reviewPromptedAt = _unset,
   }) {
     return AppState(
       presets: presets ?? this.presets,
       activePresetId: activePresetId ?? this.activePresetId,
+      favoritePresetId: identical(favoritePresetId, _unset)
+          ? this.favoritePresetId
+          : favoritePresetId as String?,
       schedule: schedule ?? this.schedule,
       isPremium: isPremium ?? this.isPremium,
       filterEnabled: filterEnabled ?? this.filterEnabled,
@@ -163,6 +218,11 @@ class AppState {
           ? this.sleepJournalActiveStart
           : sleepJournalActiveStart as DateTime?,
       sleepJournalEntries: sleepJournalEntries ?? this.sleepJournalEntries,
+      mindUnloadEntries: mindUnloadEntries ?? this.mindUnloadEntries,
+      environmentChecklistDate: identical(environmentChecklistDate, _unset)
+          ? this.environmentChecklistDate
+          : environmentChecklistDate as DateTime?,
+      environmentChecklist: environmentChecklist ?? this.environmentChecklist,
       sleepGoalMinutes: sleepGoalMinutes ?? this.sleepGoalMinutes,
       windDownChecklistDate: identical(windDownChecklistDate, _unset)
           ? this.windDownChecklistDate
@@ -188,6 +248,11 @@ class AppState {
       bedtimeModePresetId: identical(bedtimeModePresetId, _unset)
           ? this.bedtimeModePresetId
           : bedtimeModePresetId as String?,
+      favoriteSleepTrackId: identical(favoriteSleepTrackId, _unset)
+          ? this.favoriteSleepTrackId
+          : favoriteSleepTrackId as String?,
+      preferredSleepTimerMinutes:
+          preferredSleepTimerMinutes ?? this.preferredSleepTimerMinutes,
       bedtimeModeStartScreenOff:
           bedtimeModeStartScreenOff ?? this.bedtimeModeStartScreenOff,
       bedtimeModeAutoOffMinutes:
@@ -204,8 +269,19 @@ class AppState {
           : sunsetUpdatedAt as DateTime?,
       screenOffNotificationsEnabled:
           screenOffNotificationsEnabled ?? this.screenOffNotificationsEnabled,
+      remindersSnoozedUntil: identical(remindersSnoozedUntil, _unset)
+          ? this.remindersSnoozedUntil
+          : remindersSnoozedUntil as DateTime?,
+      windDownCompletedDates:
+          windDownCompletedDates ?? this.windDownCompletedDates,
       windDownItems: windDownItems ?? this.windDownItems,
       highContrastEnabled: highContrastEnabled ?? this.highContrastEnabled,
+      showDebugTools: showDebugTools ?? this.showDebugTools,
+      reviewPromptPending: reviewPromptPending ?? this.reviewPromptPending,
+      reviewPromptCount: reviewPromptCount ?? this.reviewPromptCount,
+      reviewPromptedAt: identical(reviewPromptedAt, _unset)
+          ? this.reviewPromptedAt
+          : reviewPromptedAt as DateTime?,
     );
   }
 
@@ -310,6 +386,7 @@ class AppState {
     return {
       'presets': presets.map((p) => p.toJson()).toList(),
       'activePresetId': activePresetId,
+      'favoritePresetId': favoritePresetId,
       'schedule': schedule.toJson(),
       'isPremium': isPremium,
       'filterEnabled': filterEnabled,
@@ -318,6 +395,10 @@ class AppState {
       'sleepJournalActiveStart': sleepJournalActiveStart?.toIso8601String(),
       'sleepJournalEntries':
           sleepJournalEntries.map((entry) => entry.toJson()).toList(),
+      'mindUnloadEntries':
+          mindUnloadEntries.map((entry) => entry.toJson()).toList(),
+      'environmentChecklistDate': environmentChecklistDate?.toIso8601String(),
+      'environmentChecklist': environmentChecklist,
       'sleepGoalMinutes': sleepGoalMinutes,
       'windDownChecklistDate': windDownChecklistDate?.toIso8601String(),
       'windDownChecklist': windDownChecklist,
@@ -333,6 +414,8 @@ class AppState {
       'blueLightGoalMinutes': blueLightGoalMinutes,
       'screenOffGoalMinutes': screenOffGoalMinutes,
       'bedtimeModePresetId': bedtimeModePresetId,
+      'favoriteSleepTrackId': favoriteSleepTrackId,
+      'preferredSleepTimerMinutes': preferredSleepTimerMinutes,
       'bedtimeModeStartScreenOff': bedtimeModeStartScreenOff,
       'bedtimeModeAutoOffMinutes': bedtimeModeAutoOffMinutes,
       'bedtimeModeAutoOffUntil': bedtimeModeAutoOffUntil?.toIso8601String(),
@@ -340,8 +423,14 @@ class AppState {
       'sunsetTime': _encodeTime(sunsetTime),
       'sunsetUpdatedAt': sunsetUpdatedAt?.toIso8601String(),
       'screenOffNotificationsEnabled': screenOffNotificationsEnabled,
+      'remindersSnoozedUntil': remindersSnoozedUntil?.toIso8601String(),
+      'windDownCompletedDates': windDownCompletedDates,
       'windDownItems': windDownItems.map((item) => item.toJson()).toList(),
       'highContrastEnabled': highContrastEnabled,
+      'showDebugTools': showDebugTools,
+      'reviewPromptPending': reviewPromptPending,
+      'reviewPromptCount': reviewPromptCount,
+      'reviewPromptedAt': reviewPromptedAt?.toIso8601String(),
     };
   }
 
@@ -358,6 +447,7 @@ class AppState {
     return AppState(
       presets: presetList,
       activePresetId: json['activePresetId'] as String? ?? presetList.first.id,
+      favoritePresetId: json['favoritePresetId'] as String?,
       schedule: schedule,
       isPremium: json['isPremium'] as bool? ?? false,
       filterEnabled: json['filterEnabled'] as bool? ??
@@ -370,6 +460,10 @@ class AppState {
       sleepJournalEntries: _decodeSleepJournalEntries(
         json['sleepJournalEntries'],
       ),
+      mindUnloadEntries: _decodeMindUnloadEntries(json['mindUnloadEntries']),
+      environmentChecklistDate:
+          _decodeDateTime(json['environmentChecklistDate'] as String?),
+      environmentChecklist: _decodeChecklist(json['environmentChecklist']),
       sleepGoalMinutes: json['sleepGoalMinutes'] as int? ?? 480,
       windDownChecklistDate:
           _decodeDateTime(json['windDownChecklistDate'] as String?),
@@ -390,6 +484,9 @@ class AppState {
       blueLightGoalMinutes: json['blueLightGoalMinutes'] as int? ?? 120,
       screenOffGoalMinutes: json['screenOffGoalMinutes'] as int? ?? 60,
       bedtimeModePresetId: json['bedtimeModePresetId'] as String?,
+      favoriteSleepTrackId: json['favoriteSleepTrackId'] as String?,
+      preferredSleepTimerMinutes:
+          json['preferredSleepTimerMinutes'] as int? ?? 30,
       bedtimeModeStartScreenOff:
           json['bedtimeModeStartScreenOff'] as bool? ?? true,
       bedtimeModeAutoOffMinutes:
@@ -401,9 +498,20 @@ class AppState {
       sunsetUpdatedAt: _decodeDateTime(json['sunsetUpdatedAt'] as String?),
       screenOffNotificationsEnabled:
           json['screenOffNotificationsEnabled'] as bool? ?? true,
+      remindersSnoozedUntil:
+          _decodeDateTime(json['remindersSnoozedUntil'] as String?),
+      windDownCompletedDates:
+          (json['windDownCompletedDates'] as List<dynamic>?)
+                  ?.whereType<String>()
+                  .toList() ??
+              const [],
       windDownItems: _decodeWindDownItems(json['windDownItems']) ??
           _defaultWindDownItems(),
       highContrastEnabled: json['highContrastEnabled'] as bool? ?? false,
+      showDebugTools: json['showDebugTools'] as bool? ?? false,
+      reviewPromptPending: json['reviewPromptPending'] as bool? ?? false,
+      reviewPromptCount: json['reviewPromptCount'] as int? ?? 0,
+      reviewPromptedAt: _decodeDateTime(json['reviewPromptedAt'] as String?),
     );
   }
 
@@ -459,6 +567,7 @@ class AppState {
     return AppState(
       presets: presets,
       activePresetId: 'soft',
+      favoritePresetId: 'soft',
       schedule: ScheduleConfig(
         mode: FilterMode.alwaysOn,
         startTime: const TimeOfDay(hour: 22, minute: 0),
@@ -472,6 +581,9 @@ class AppState {
       snoozeUntil: null,
       sleepJournalActiveStart: null,
       sleepJournalEntries: const [],
+      mindUnloadEntries: const [],
+      environmentChecklistDate: null,
+      environmentChecklist: const {},
       sleepGoalMinutes: 480,
       windDownChecklistDate: null,
       windDownChecklist: const {},
@@ -487,6 +599,8 @@ class AppState {
       blueLightGoalMinutes: 120,
       screenOffGoalMinutes: 60,
       bedtimeModePresetId: null,
+      favoriteSleepTrackId: 'drift',
+      preferredSleepTimerMinutes: 30,
       bedtimeModeStartScreenOff: true,
       bedtimeModeAutoOffMinutes: 0,
       bedtimeModeAutoOffUntil: null,
@@ -494,8 +608,14 @@ class AppState {
       sunsetTime: null,
       sunsetUpdatedAt: null,
       screenOffNotificationsEnabled: true,
+      remindersSnoozedUntil: null,
+      windDownCompletedDates: const [],
       windDownItems: _defaultWindDownItems(),
       highContrastEnabled: false,
+      showDebugTools: false,
+      reviewPromptPending: false,
+      reviewPromptCount: 0,
+      reviewPromptedAt: null,
     );
   }
 
@@ -582,6 +702,18 @@ class AppState {
         .whereType<Map>()
         .map(
           (item) => SleepJournalEntry.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .toList();
+  }
+
+  static List<MindUnloadEntry> _decodeMindUnloadEntries(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map(
+          (item) => MindUnloadEntry.fromJson(
             Map<String, dynamic>.from(item),
           ),
         )

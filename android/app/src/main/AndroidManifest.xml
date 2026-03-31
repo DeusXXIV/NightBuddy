@@ -12,10 +12,10 @@
         android:label="NightBuddy"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- Placeholder AdMob App ID (replace with your real ID before release) -->
+        <!-- AdMob App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-7274499058887640~9207015919" />
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

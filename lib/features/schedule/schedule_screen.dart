@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/filter_models.dart';
 import '../../state/app_notifier.dart';
 import '../../state/app_state.dart';
+import '../../widgets/premium_ui.dart';
 import '../../widgets/preset_chip.dart';
 import '../root/root_shell.dart';
 import '../premium/premium_screen.dart';
@@ -321,6 +322,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final now = DateTime.now();
     final nextStart = _nextStart(now, start);
     final nextEnd = _nextEnd(now, start, end);
+    final sunset =
+        state.sunsetSyncEnabled ? (state.sunsetTime ?? _approxSunsetTime(now)) : null;
     final windDownStart = _windDownMinutes > 0
         ? nextStart.subtract(Duration(minutes: _windDownMinutes))
         : null;
@@ -335,6 +338,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       if (fadeOutEnd != null)
         'Fade-out ends: ${_formatDateTime(fadeOutEnd)}',
       'Preset: $presetLabel',
+      if (sunset != null) 'Sunset sync: ${_format(sunset)}',
     ];
 
     return Card(
@@ -407,6 +411,36 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     return '$hour:$minute $period';
   }
 
+  TimeOfDay _approxSunsetTime(DateTime now) {
+    switch (now.month) {
+      case 12:
+      case 1:
+        return const TimeOfDay(hour: 17, minute: 0);
+      case 2:
+        return const TimeOfDay(hour: 17, minute: 30);
+      case 3:
+        return const TimeOfDay(hour: 18, minute: 15);
+      case 4:
+        return const TimeOfDay(hour: 19, minute: 0);
+      case 5:
+        return const TimeOfDay(hour: 20, minute: 0);
+      case 6:
+        return const TimeOfDay(hour: 20, minute: 30);
+      case 7:
+        return const TimeOfDay(hour: 20, minute: 15);
+      case 8:
+        return const TimeOfDay(hour: 19, minute: 45);
+      case 9:
+        return const TimeOfDay(hour: 19, minute: 0);
+      case 10:
+        return const TimeOfDay(hour: 18, minute: 15);
+      case 11:
+        return const TimeOfDay(hour: 17, minute: 30);
+      default:
+        return const TimeOfDay(hour: 18, minute: 30);
+    }
+  }
+
   DateTime _nextStart(DateTime now, TimeOfDay start) {
     final candidate =
         DateTime(now.year, now.month, now.day, start.hour, start.minute);
@@ -438,11 +472,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 
   void _promptPremium(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Premium feature - unlock to use advanced schedules'),
-        duration: Duration(seconds: 2),
-      ),
+    showPremiumLockedSnackBar(
+      context,
+      featureName: 'Advanced schedules',
     );
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const PremiumScreen()),
