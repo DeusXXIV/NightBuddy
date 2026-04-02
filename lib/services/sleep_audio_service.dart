@@ -28,7 +28,12 @@ const sleepTrackOptions = <SleepTrackOption>[
     label: 'Rainbound Lullaby',
     asset: 'sounds/SoundScapes/Rain.aac',
   ),
-  SleepTrackOption(id: 'fan', label: 'Velvet Fan Drift', isPremium: true),
+  SleepTrackOption(
+    id: 'fan',
+    label: 'Velvet Fan Drift',
+    asset: 'sounds/SoundScapes/pixabay-dragon-studio-fan-blowing.AAC',
+    isPremium: true,
+  ),
   SleepTrackOption(id: 'ocean', label: 'Oceannight Repose', isPremium: true),
 ];
 
